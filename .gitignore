@@ -56,3 +56,4 @@ secrets/
 # Throwaway developer notes
 tools/npm-versions.txt
 tools/get-npm-versions.ps1
+tools/final-audit.ps1

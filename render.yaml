@@ -1,0 +1,46 @@
+# ---------------------------------------------------------------------------
+# Merqo on Render.
+#
+# The backend is a free web service built from the Dockerfile in the repository
+# root. The database is NOT declared here: Render's free Postgres expires after
+# 30 days, so the project uses Supabase instead and the connection string is
+# supplied as an environment variable.
+#
+# This file is a convenience. The DEPLOY.md guide shows the same steps in the
+# Render dashboard, which is what the student follows.
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: merqo-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    branch: main
+    healthCheckPath: /api/v1/health/ping
+    # Render injects PORT automatically; the Dockerfile reads it.
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError
+      # Fill these in in the Render dashboard, never in this file.
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DEMO_MODE
+        value: "true"
+      - key: COURIER_MODE
+        value: mock
+      - key: PAYMENT_MODE
+        value: mock
+      - key: WEBSITE_MODE
+        value: mock
+      - key: LLM_MODE
+        value: mock

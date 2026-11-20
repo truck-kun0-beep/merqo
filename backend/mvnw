@@ -1,0 +1,54 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# Maven Wrapper - Unix.
+# Uses distribution type "only-script", so no wrapper jar is needed and the
+# pinned Maven version is downloaded on first use.
+# ----------------------------------------------------------------------------
+set -e
+
+BASE_DIR=$(cd "$(dirname "$0")" && pwd)
+WRAPPER_PROPERTIES="$BASE_DIR/.mvn/wrapper/maven-wrapper.properties"
+
+if [ ! -f "$WRAPPER_PROPERTIES" ]; then
+  echo "Cannot find $WRAPPER_PROPERTIES" >&2
+  exit 1
+fi
+
+distributionUrl=$(sed -n 's/^distributionUrl=//p' "$WRAPPER_PROPERTIES")
+distributionSha256Sum=$(sed -n 's/^distributionSha256Sum=//p' "$WRAPPER_PROPERTIES")
+
+MAVEN_USER_HOME="${MAVEN_USER_HOME:-$HOME/.m2}"
+MAVEN_HOME_PARENT="$MAVEN_USER_HOME/wrapper/dists"
+
+case "$distributionUrl" in
+  *-bin.zip) distributionName="${distributionUrl##*/}" ;;
+  *) echo "Unsupported distributionUrl: $distributionUrl" >&2; exit 1 ;;
+esac
+distributionUrlName="${distributionName%.zip}"
+MAVEN_HOME="$MAVEN_HOME_PARENT/$distributionUrlName"
+
+if [ ! -d "$MAVEN_HOME" ]; then
+  mkdir -p "$MAVEN_HOME_PARENT"
+  archive="$MAVEN_HOME_PARENT/$distributionName"
+  echo "Downloading $distributionUrl ..."
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$archive" "$distributionUrl"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$archive" "$distributionUrl"
+  else
+    echo "Neither curl nor wget is available." >&2
+    exit 1
+  fi
+  if [ -n "$distributionSha256Sum" ]; then
+    echo "$distributionSha256Sum  $archive" | sha256sum -c -
+  fi
+  ( cd "$MAVEN_HOME_PARENT" && unzip -q "$archive" )
+  rm -f "$archive"
+fi
+
+MAVEN_CMD="$MAVEN_HOME/bin/mvn"
+if [ ! -x "$MAVEN_CMD" ]; then
+  MAVEN_CMD="$MAVEN_HOME/bin/mvn.cmd"
+fi
+
+exec "$MAVEN_CMD" -Dmaven.multiModuleProjectDirectory="$BASE_DIR" "$@"

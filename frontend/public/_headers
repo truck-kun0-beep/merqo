@@ -1,0 +1,18 @@
+/*
+ * Cloudflare Pages headers.
+ *
+ * The frontend is served as static files, the API is proxied by the Pages
+ * Function in /functions/api. No third party content is loaded, so the content
+ * security policy stays strict.
+ */
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*
+  Cache-Control: no-cache

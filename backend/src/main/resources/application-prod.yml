@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------------------
+# Production profile. Used on Render.
+# Everything sensitive comes from an environment variable; nothing is hardcoded.
+# ---------------------------------------------------------------------------
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+logging:
+  level:
+    root: INFO
+    com.merqo: ${MERQO_LOG_LEVEL:INFO}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

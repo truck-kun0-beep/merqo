@@ -1,0 +1,58 @@
+# ---- Java / Maven ----
+target/
+*.class
+*.jar
+!**/.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+*.log
+hs_err_pid*
+
+# ---- Node / Frontend ----
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.vite/
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+bin/
+nbproject/
+.vs/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Secrets (never commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ---- Local runtime artefacts ----
+/logs/
+/tmp/
+/backups/
+*.local.log
+
+# Throwaway developer notes
+tools/npm-versions.txt
+tools/get-npm-versions.ps1

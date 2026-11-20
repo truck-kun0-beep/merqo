@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+/*
+ * Merqo design tokens.
+ *
+ * The colours are neutral so the interface stays readable on the cheap
+ * screens used at the counter. Business values such as the business name are
+ * not hardcoded anywhere in the frontend; they come from the settings table
+ * through the API.
+ */
+@theme {
+  --color-merqo-50: #f0f7f5;
+  --color-merqo-100: #d9ece6;
+  --color-merqo-200: #b6d9ce;
+  --color-merqo-300: #85bdad;
+  --color-merqo-400: #529c89;
+  --color-merqo-500: #337f6d;
+  --color-merqo-600: #266657;
+  --color-merqo-700: #1f5247;
+  --color-merqo-800: #1b433b;
+  --color-merqo-900: #173832;
+
+  --font-sans:
+    'Inter', 'Segoe UI', system-ui, -apple-system, 'Noto Sans Bengali', sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keep the POS usable on a touch screen at the counter. */
+button,
+[role='button'] {
+  touch-action: manipulation;
+}

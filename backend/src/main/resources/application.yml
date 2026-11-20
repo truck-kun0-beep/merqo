@@ -1,0 +1,89 @@
+# ---------------------------------------------------------------------------
+# Base configuration. Every environment specific value comes from an environment
+# variable so the same build runs locally, on Render and on any other host.
+# ---------------------------------------------------------------------------
+spring:
+  application:
+    name: merqo-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/merqo}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    hikari:
+      # Small pool: the free Render instance only has 512 MB of RAM and the
+      # Supabase free tier limits the number of client connections.
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:10000}
+      idle-timeout: ${DB_IDLE_TIMEOUT_MS:300000}
+      max-lifetime: ${DB_MAX_LIFETIME_MS:900000}
+      pool-name: merqo-pool
+  jpa:
+    # Flyway owns the schema. Hibernate only validates that it matches.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    connect-retries: 10
+    connect-retries-interval: 5
+    schemas: ${DB_SCHEMA:public}
+    default-schema: ${DB_SCHEMA:public}
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: false
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never
+  health:
+    db:
+      enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+merqo:
+  demo-mode: ${DEMO_MODE:false}
+  courier-mode: ${COURIER_MODE:mock}
+  payment-mode: ${PAYMENT_MODE:mock}
+  website-mode: ${WEBSITE_MODE:mock}
+  llm-mode: ${LLM_MODE:mock}
+  cors:
+    origins: ${CORS_ORIGINS:http://localhost:5173}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId:-no-correlation-id}] %logger{36} - %msg%n"
+  level:
+    root: INFO
+    com.merqo: ${MERQO_LOG_LEVEL:INFO}
+    org.flywaydb: INFO
+    org.hibernate.SQL: WARN

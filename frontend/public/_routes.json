@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "include": ["/api/*"],
+  "exclude": ["/assets/*", "/*.{png,jpg,jpeg,gif,svg,ico,webp,woff,woff2,ttf,css,js,map}"]
+}

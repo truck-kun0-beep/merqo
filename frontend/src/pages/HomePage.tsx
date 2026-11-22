@@ -19,8 +19,8 @@ export default function HomePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
         <p className="mt-1 text-sm text-slate-600">
-          The system is being prepared. Business screens arrive with the next steps; this page proves the
-          backend, the database and the connection between them are working.
+          The system is being prepared. Business screens arrive with the next steps; this page
+          proves the backend, the database and the connection between them are working.
         </p>
       </div>
 

@@ -20,8 +20,7 @@
   --color-merqo-800: #1b433b;
   --color-merqo-900: #173832;
 
-  --font-sans:
-    'Inter', 'Segoe UI', system-ui, -apple-system, 'Noto Sans Bengali', sans-serif;
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, 'Noto Sans Bengali', sans-serif;
 }
 
 html,

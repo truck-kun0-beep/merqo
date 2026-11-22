@@ -130,6 +130,12 @@ jdbc:postgresql://aws-0-REGION.pooler.supabase.com:5432/postgres
    > browser uses the Pages proxy, so CORS is only needed for direct API
    > debugging.
 
+   > The session settings have sensible defaults in the `prod` profile:
+   > the cookie is named `MERQO_SESSION`, it is `Secure` and `SameSite=Lax`,
+   > it sits unused for eight hours and it lives for twelve hours in total.
+   > Change `SESSION_IDLE_TIMEOUT_MINUTES` and
+   > `SESSION_ABSOLUTE_TIMEOUT_MINUTES` only if the shop wants other values.
+
 6. Open **Advanced** and set:
    - **Health Check Path:** `/api/v1/health/ping`
 7. Click **Create Web Service**.

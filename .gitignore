@@ -53,7 +53,20 @@ secrets/
 /backups/
 *.local.log
 
+# ---- Developer scratch ----
+# tmpjar holds throwaway probe scripts and their output. Nothing in it is part
+# of the project.
+tmpjar/
+
+# Stray dumps written to the repository root by a shell redirect whose path
+# ended up in the file name.
+*Merqo*.txt
+
 # Throwaway developer notes
 tools/npm-versions.txt
 tools/get-npm-versions.ps1
 tools/final-audit.ps1
+
+# The Spring Boot dependency list, downloaded once to check the pinned
+# versions. It is a copy of a file from Maven Central, not part of the project.
+tools/sb-deps-*.pom

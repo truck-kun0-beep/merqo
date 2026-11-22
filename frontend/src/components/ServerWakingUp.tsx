@@ -20,8 +20,8 @@ export default function ServerWakingUp() {
       <div>
         <h2 className="text-lg font-semibold text-slate-900">Server is waking up</h2>
         <p className="mt-2 text-sm text-slate-600">
-          The free server sleeps when it is idle and needs a moment to start again. This page retries
-          automatically, so there is nothing to do.
+          The free server sleeps when it is idle and needs a moment to start again. This page
+          retries automatically, so there is nothing to do.
         </p>
       </div>
     </section>

@@ -150,6 +150,11 @@ it takes a few minutes. Later starts take seconds.
 Open **<http://localhost:5173>**. The home page shows the backend health:
 application `UP`, database `UP`.
 
+With `DEMO_MODE=true` the backend writes the demo locations and the demo
+accounts into the database at every start. The login page then shows the demo
+accounts, and one click signs you in. The seed is idempotent, so starting the
+backend twice gives the same rows as starting it once.
+
 ### The frontend talks to its own origin
 
 The Vite dev server proxies `/api/*` to `http://localhost:8080`, exactly like
@@ -234,5 +239,9 @@ PostgreSQL is not running. Check `Get-Service postgresql*` and look at the
 
 ## 10. Next step
 
-The bootstrap ends with a live public URL. Follow [DEPLOY.md](DEPLOY.md) to put
-Merqo online, then continue with the next prompt.
+Sign in on <http://localhost:5173>. With `DEMO_MODE=true` the login page
+shows the demo accounts; one click signs you in. The demo locations and the
+demo accounts are written by the backend itself at every start, so there is no
+separate seed step.
+
+Then follow [DEPLOY.md](DEPLOY.md) to put Merqo online.

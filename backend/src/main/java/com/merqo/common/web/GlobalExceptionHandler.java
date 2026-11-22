@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.merqo.common.error.BusinessException;
+import com.merqo.common.error.ErrorCodes;
 import com.merqo.common.error.ProblemDetail;
 
 /**
@@ -143,6 +144,39 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles a request body that is not valid JSON.
+     *
+     * <p>A broken body is the caller's mistake, not a server fault, so it is answered with the
+     * status 400 and the code {@code BAD_REQUEST}. Without this handler the framework would let it
+     * reach the catch all below and the caller would see a 500, which would wrongly suggest that
+     * the server is broken.
+     *
+     * @param exception the raised exception
+     * @param request the current request
+     * @return the problem detail response
+     */
+    @ExceptionHandler({
+        org.springframework.http.converter.HttpMessageNotReadableException.class,
+        org.springframework.web.HttpRequestMethodNotSupportedException.class,
+        org.springframework.web.HttpMediaTypeNotSupportedException.class
+    })
+    public ResponseEntity<ProblemDetail> handleUnreadableRequest(
+            Exception exception, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        return ResponseEntity.status(status)
+                .body(
+                        ProblemDetail.of(
+                                PROBLEM_TYPE_BASE + "bad-request",
+                                status.getReasonPhrase(),
+                                status.value(),
+                                "The request could not be read. Check the JSON body and the HTTP method.",
+                                request.getRequestURI(),
+                                ErrorCodes.BAD_REQUEST,
+                                currentCorrelationId(),
+                                Instant.now(clock)));
+    }
+
+    /**
      * Handles anything that was not expected. The detail stays generic so that internal information
      * never leaks to the browser.
      *
@@ -164,6 +198,54 @@ public class GlobalExceptionHandler {
                                 "An unexpected error occurred. The correlation id identifies this request in the logs.",
                                 request.getRequestURI(),
                                 "INTERNAL_ERROR",
+                                currentCorrelationId(),
+                                Instant.now(clock)));
+    }
+
+    /**
+     * Handles a request that Spring Security refused before it reached a controller.
+     *
+     * <p>That happens for an unauthenticated request, for a missing or wrong CSRF token and for a
+     * request that is not allowed. The answer keeps the RFC 7807 shape, so the frontend always
+     * reads the same fields.
+     *
+     * @param exception the raised exception
+     * @param request the current request
+     * @return the problem detail response
+     */
+    @ExceptionHandler({
+        org.springframework.security.access.AccessDeniedException.class,
+        org.springframework.security.web.csrf.CsrfException.class,
+        org.springframework.security.core.AuthenticationException.class
+    })
+    public ResponseEntity<ProblemDetail> handleSecurity(
+            Exception exception, HttpServletRequest request) {
+        HttpStatus status;
+        String errorCode;
+        String detail;
+        if (exception instanceof org.springframework.security.web.csrf.CsrfException) {
+            status = HttpStatus.FORBIDDEN;
+            errorCode = "CSRF_TOKEN_INVALID";
+            detail = "The request was refused because the security token was missing or wrong.";
+        } else if (exception instanceof org.springframework.security.access.AccessDeniedException) {
+            status = HttpStatus.FORBIDDEN;
+            errorCode = ErrorCodes.FORBIDDEN;
+            detail = "You do not have the permission to do this.";
+        } else {
+            status = HttpStatus.UNAUTHORIZED;
+            errorCode = ErrorCodes.UNAUTHENTICATED;
+            detail = "You must sign in to continue.";
+        }
+        log.info("Spring Security refused the request: code={}", errorCode);
+        return ResponseEntity.status(status)
+                .body(
+                        ProblemDetail.of(
+                                PROBLEM_TYPE_BASE + errorCode.toLowerCase(java.util.Locale.ROOT),
+                                status.getReasonPhrase(),
+                                status.value(),
+                                detail,
+                                request.getRequestURI(),
+                                errorCode,
                                 currentCorrelationId(),
                                 Instant.now(clock)));
     }

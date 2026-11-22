@@ -78,6 +78,16 @@ merqo:
   llm-mode: ${LLM_MODE:mock}
   cors:
     origins: ${CORS_ORIGINS:http://localhost:5173}
+  # Session settings. The cookie is host only and carries no Domain attribute.
+  cookie-name: ${SESSION_COOKIE_NAME:MERQO_SESSION}
+  idle-timeout-minutes: ${SESSION_IDLE_TIMEOUT_MINUTES:480}
+  absolute-timeout-minutes: ${SESSION_ABSOLUTE_TIMEOUT_MINUTES:720}
+  secure-cookie: ${SESSION_SECURE_COOKIE:false}
+  # The first owner. The password is only read from the environment, never logged.
+  initial-owner-username: ${INITIAL_OWNER_USERNAME:owner}
+  initial-owner-email: ${INITIAL_OWNER_EMAIL:}
+  initial-owner-password: ${INITIAL_OWNER_PASSWORD:}
+  reset-owner-password-on-start: ${RESET_OWNER_PASSWORD_ON_START:false}
 
 logging:
   pattern:

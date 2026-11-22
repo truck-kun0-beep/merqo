@@ -15,7 +15,7 @@ public class ValidationException extends BusinessException {
     /**
      * Creates a business rule violation.
      *
-     * @param errorCode stable code such as {@code INSUFFICIENT_STOCK}
+     * @param errorCode stable code such as {@code VALIDATION_FAILED}
      * @param message a human readable explanation
      */
     public ValidationException(String errorCode, String message) {

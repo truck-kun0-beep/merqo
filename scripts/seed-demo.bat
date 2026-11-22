@@ -1,12 +1,14 @@
 @REM ===========================================================================
 @REM Merqo - load the demo data.
 @REM
-@REM The demo seeder is part of Prompt 10 (the demo mode and seed data prompt).
-@REM In this bootstrap there is no demo data yet, so this script checks the
-@REM configuration and says plainly that there is nothing to seed.
+@REM The demo data is written by the backend itself, not by this script. The
+@REM DemoSeeder runs at every start when DEMO_MODE is true, and every
+@REM contributor is idempotent: running it twice gives the same rows as running
+@REM it once. Nothing else has to be done.
 @REM
-@REM Later the seeder is added to the backend as a Spring Boot ApplicationRunner
-@REM and this script calls it with the "seed" profile and then exits.
+@REM This script starts the backend once with the dev profile (where demo mode
+@REM is on). Wait for the line "The demo data is ready." in the console, then
+@REM press Ctrl+C to stop the backend again.
 @REM ===========================================================================
 @ECHO OFF
 SETLOCAL
@@ -29,7 +31,20 @@ IF /I NOT "%DEMO_MODE%"=="true" (
   EXIT /B 0
 )
 
-ECHO [INFO] DEMO_MODE is true, so the demo deployment would show seeded data.
-ECHO [INFO] The demo seeder has not been written yet: it belongs to the prompt
-ECHO        that builds the demo mode. Nothing was changed in the database.
+IF NOT EXIST "backend\target\merqo-backend-0.0.1-SNAPSHOT.jar" (
+  ECHO [INFO] Building the backend jar ...
+  CALL backend\mvnw.cmd -f backend\pom.xml -B -DskipTests package
+  IF ERRORLEVEL 1 (
+    ECHO [ERROR] The backend build failed.
+    EXIT /B 1
+  )
+)
+
+ECHO [INFO] Starting the backend once so the demo data is written ...
+ECHO [INFO] Wait for "The demo data is ready." and then press Ctrl+C.
+PUSHD backend
+CALL mvnw.cmd -B spring-boot:run -Dspring-boot.run.profiles=dev
+POPD
+
+ECHO [INFO] The demo data is in the database now.
 EXIT /B 0

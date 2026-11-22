@@ -49,8 +49,12 @@ viva and deployable on free hosting.
 com.merqo
 ├── MerqoApplication            entry point
 ├── auth                        login, sessions, first owner (Prompt 1)
-├── users                       accounts, roles, permissions (Prompt 1)
-├── locations                   warehouse, branches (Prompt 1)
+├── user                        accounts, passwords, throttling (Prompt 1)
+├── access                      permissions, templates, delegations (Prompt 1)
+├── location                    warehouse, branches (Prompt 1)
+├── settings                    the typed business settings (Prompt 1)
+├── audit                       audit log (Prompt 1)
+├── demo                        the demo seed (Prompt 1)
 ├── catalog                     products, variants, barcodes (Prompt 2)
 ├── inventory                   stock, movements, adjustments (Prompt 2)
 ├── transfers                   warehouse to branch transfers (Prompt 2)
@@ -65,10 +69,16 @@ com.merqo
 ├── analytics                   dashboards, action centre (Prompt 8)
 ├── integrations                website, courier and payment adapters
 ├── notifications               messages and links
-├── audit                       audit log
 ├── ai                          the assistant (Prompt 9)
-└── common                      shared foundation (built in this prompt)
+└── common                      shared foundation (built in Prompt 0)
 ```
+
+The packages that exist in the code today are the ones in bold in the table in
+the README. A package is a flat folder of classes in this project: the inner
+`controller/`, `service/`, `repository/` layout below is the target for the
+business modules that come later. The modules that are already built keep their
+classes in one folder, because each of them is small enough that the extra
+folders would only hide the flow of a request.
 
 Every business module uses the same inner layout:
 
@@ -99,7 +109,7 @@ Every business module uses the same inner layout:
 
 ---
 
-## 3. The common module (built in this prompt)
+## 3. The common module (built in Prompt 0)
 
 ```
 common/
@@ -113,17 +123,27 @@ common/
 │   ├── ConflictException.java
 │   ├── ValidationException.java
 │   ├── ForbiddenException.java
+│   ├── UnauthenticatedException.java
+│   ├── ErrorCodes.java         every stable error code in one place
 │   └── ProblemDetail.java      the RFC 7807 error shape
 ├── web/
 │   ├── HealthController.java   /health and /health/ping
 │   ├── GlobalExceptionHandler.java
 │   ├── CorrelationIdFilter.java
-│   └── CorrelationIdFilterConfiguration.java
+│   ├── CorrelationIdFilterConfiguration.java
+│   ├── CsrfTokenCookieFilter.java    the XSRF-TOKEN cookie
+│   ├── ProblemAuthenticationEntryPoint.java
+│   ├── ProblemAccessDeniedHandler.java
+│   ├── ProblemResponseWriter.java
+│   ├── PageRequest.java
+│   └── PageResponse.java
 └── config/
     ├── CommonConfiguration.java      the Clock bean
     ├── CorsConfigurationSetup.java    CORS from the environment
     ├── MerqoCorsProperties.java
     ├── MerqoModeProperties.java       DEMO_MODE, COURIER_MODE, ...
+    ├── MerqoSessionProperties.java    cookie name, timeouts
+    ├── SessionCookieConfiguration.java
     ├── OpenApiConfiguration.java
     ├── SecurityConfiguration.java
     └── WebConfiguration.java
@@ -135,6 +155,57 @@ Every later module needs money, time, errors and a correlation id. Putting them
 in one place means there is exactly one rounding rule and exactly one day
 boundary in the whole system. That is also the part the instructor will ask
 about, so it is written to be read.
+
+### The modules built in Prompt 1
+
+```
+auth/      AuthController, OwnerBootstrapService, DemoService
+user/      AppUser, AuthService, UserService, PasswordPolicy,
+           LoginThrottlePolicy, SessionSecurityContextRepository,
+           PasswordChangeRequiredFilter, CurrentUserService
+access/    Permission, PermissionResolver, PermissionService,
+           AccessContext, EffectivePermissions, DelegationPolicy,
+           AssignmentService, the templates and the overrides
+location/  Location, LocationService, LocationController
+settings/  SettingKey, SettingService, SettingController
+audit/     AuditEvent, AuditLog, AuditService, AuditLogController
+demo/      DemoSeeder and the demo contributors
+```
+
+`access` is the module that decides **who may do what, and where**. It holds
+no data of its own except the templates, the overrides and the delegations;
+the accounts and the locations live in `user` and `location`. The services
+never reach into another module's repository: they ask the module's service.
+
+### The screens built in Prompt 1
+
+```
+frontend/src/
+├── api/
+│   ├── client.ts        the fetch wrapper, the CSRF header, the error shape
+│   ├── auth.ts          sign in, sign out, the session, the demo accounts
+│   ├── business.ts      one thin function per business endpoint
+│   └── models.ts        the shapes of the answers, no behaviour
+├── components/
+│   └── AppShell.tsx     the navigation, only the links the permissions allow
+├── pages/
+│   ├── LoginPage.tsx              sign in, demo accounts, first owner setup
+│   ├── ChangePasswordPage.tsx
+│   ├── HomePage.tsx               the backend health
+│   ├── LocationsPage.tsx          the branches and the warehouse
+│   ├── UsersPage.tsx              the accounts
+│   ├── UserDetailPage.tsx         templates, overrides, delegations, assignments
+│   ├── PermissionTemplatesPage.tsx  the named sets of permissions
+│   ├── AuditPage.tsx              the append only log
+│   └── SettingsPage.tsx           the typed business values
+└── session/
+    ├── SessionProvider.tsx  the one place that asks "who am I?"
+    └── RequireSession.tsx   the guard in front of every business screen
+```
+
+The frontend never decides what the caller may see. It asks the session once
+and hides the links the caller cannot use, and the backend checks the
+permission and the scope again on every request.
 
 ---
 
@@ -208,12 +279,25 @@ Browser  ──►  merqo.pages.dev/api/v1/...          (same origin, cookie wor
   cross site scripting bug hands the token to the attacker.
 - A cookie with `HttpOnly` and `SameSite=Lax` is not readable by JavaScript at
   all.
-- Sessions live in PostgreSQL (`SPRING_SESSION` tables, created by Flyway), so
+- Sessions live in PostgreSQL (`spring_session` tables, created by Flyway), so
   a login survives the backend restarting. On a free Render instance the
   backend restarts often, so this matters.
 
 The session tables are created by Flyway, not by Spring Session, so the schema
 stays owned by one tool.
+
+### The session holds only the user id
+
+The session attribute is the id of the account and nothing else. The account,
+its permission templates, its overrides and its location assignments are read
+again on **every request**. That is what makes a change take effect at once:
+ending an assignment, deactivating an account or changing a template is
+visible on the very next request, not at the next sign in.
+
+The session has two timeouts: the **idle timeout** of eight hours, which the
+session itself enforces, and the **absolute timeout** of twelve hours, which
+the repository enforces by refusing a session that was created longer ago
+than that, no matter how often it was used.
 
 ### The same code locally
 
@@ -290,10 +374,20 @@ nothing secret is in git.
 | `PAYMENT_MODE` | `mock`, `manual` | `mock` |
 | `WEBSITE_MODE` | `mock`, `generic` | `mock` |
 | `LLM_MODE` | `mock` or a provider | `mock` |
+| `SESSION_COOKIE_NAME` | the name of the session cookie | `MERQO_SESSION` |
+| `SESSION_IDLE_TIMEOUT_MINUTES` | how long a session may sit unused | `480` |
+| `SESSION_ABSOLUTE_TIMEOUT_MINUTES` | how long a session may live in total | `720` |
+| `SESSION_SECURE_COOKIE` | the `Secure` flag on the cookie | `false`, `true` in `prod` |
+| `INITIAL_OWNER_USERNAME` | first owner, used when `DEMO_MODE=false` | `owner` |
 | `INITIAL_OWNER_EMAIL` | first owner, used when `DEMO_MODE=false` | empty |
 | `INITIAL_OWNER_PASSWORD` | first owner, used when `DEMO_MODE=false` | empty |
+| `RESET_OWNER_PASSWORD_ON_START` | resets the owner password on every start | `false` |
 
 Profiles: `dev` (local), `test` (`merqo_test`), `prod` (Render).
+
+The complete list with the comments lives in [`.env.example`](../.env.example).
+The frontend reads `VITE_API_PROXY_TARGET`, `VITE_PORT` and
+`VITE_PREVIEW_PORT`; the Cloudflare Pages Function reads `API_BASE_URL`.
 
 ---
 
@@ -317,18 +411,20 @@ Measured startup time and memory use are in the hand-back report of Prompt 0.
 
 | Concept | Where |
 | --- | --- |
-| Encapsulation | `Money`, `BusinessTime`, `MerqoModeProperties`, all domain objects |
-| Abstraction | `BusinessException`, `SecurityFilterChain`, `WebMvcConfigurer` |
+| Encapsulation | `Money`, `BusinessTime`, `MerqoModeProperties`, `MerqoSessionProperties`, `AccessContext`, all domain objects |
+| Abstraction | `BusinessException`, `SecurityFilterChain`, `WebMvcConfigurer`, `PermissionResolver`, `DelegationPolicy` |
 | Inheritance | the `BusinessException` family |
-| Polymorphism | `GlobalExceptionHandler`, later the discount and payment strategies |
-| Interfaces | `CourierProvider`, `PaymentVerifier`, `DiscountRule`, `ReceiptRenderer`, `WebsiteOrderSource` |
-| Strategy | discount rules, payment verifiers, cost allocation |
+| Polymorphism | `GlobalExceptionHandler`, the `DemoDataContributor` family, later the discount and payment strategies |
+| Interfaces | `AppUserRepository`, `AuditLogRepository`, `DemoDataContributor`, later `CourierProvider`, `PaymentVerifier`, `DiscountRule`, `ReceiptRenderer`, `WebsiteOrderSource` |
+| Strategy | `SessionSecurityContextRepository`, the permission resolver, later discount rules, payment verifiers, cost allocation |
 | Adapter | `PathaoAdapter`, `SteadfastAdapter`, `MockCourierAdapter`, website connectors |
 | Factory / registry | choosing an implementation from `COURIER_MODE` and friends |
 | State | order and transfer status transitions in one transition table |
-| Observer | Spring application events for stock and order changes |
-| Composition | a sale contains lines; an order contains lines, payments and shipments |
-| Value objects | `Money`, `Quantity` as immutable records |
+| Observer | Spring application events for stock and order changes; the `DemoSeeder` reacts to the application start |
+| Composition | a sale contains lines; an order contains lines, payments and shipments; `EffectivePermissions` holds the global and the location scoped permissions |
+| Value objects | `Money`, `Quantity` as immutable records, `ProblemDetail` and `PageResponse` as records |
+| Builder | `AuditEvent.Builder`, for an event with many optional parts |
+| Fail fast | `AccessContext.requireGlobal` and `require`, so a service cannot forget to check |
 
 Only the ones that are real in the current code are described in
 [JAVA_GUIDE.md](JAVA_GUIDE.md) with a concrete class path. The rest appear as
@@ -338,12 +434,33 @@ the prompts that need them arrive.
 
 ## 10. Security
 
+- **Default deny.** The security chain ends with `anyRequest().authenticated()`.
+  The only endpoints that may be called without signing in are the six names on
+  the public allow list in `SecurityConfiguration.PUBLIC_ENDPOINTS`: the login,
+  the status, the two demo endpoints and the two health endpoints.
+  `PublicEndpointPolicyTest` walks every endpoint the application really maps
+  and proves that the allow list holds no business endpoint and no name that
+  answers nothing, so a new endpoint cannot be left open by accident.
 - Individual accounts with a BCrypt hash. No shared logins.
-- Login throttling (Prompt 1).
+- Login throttling: five failures lock the account, twenty failures from one
+  address throttle the address. The counter lives in its own table, so a
+  restart of the backend does not clear it.
 - Every endpoint checks **both** the permission and the user's assigned
-  locations. A branch id sent by the client is never trusted.
-- Sensitive actions are audited: who, when, old value, new value.
+  locations. A branch id sent by the client is never trusted, and a location
+  outside the scope is answered with `404`, not with `403`.
+- A wrong password always gives the same answer as an account that does not
+  exist, and the hash is computed either way, so neither the message nor the
+  timing leaks that the account exists.
+- CSRF is on. The token travels in a readable `XSRF-TOKEN` cookie and comes
+  back in the `X-XSRF-TOKEN` header; a request that changes something without
+  it is refused with `403 CSRF_TOKEN_INVALID`.
+- The session is stored in PostgreSQL and the session holds **only the user
+  id**. The permissions are read again on every request, so ending an
+  assignment or deactivating an account takes effect on the very next request.
+- Sensitive actions are audited: who, when, old value, new value. The audit
+  log is append only, and a database trigger refuses any `UPDATE` or
+  `DELETE`.
 - Secrets only in environment variables. `.env` is in `.gitignore`.
 - No personal data and no secrets in the logs.
-- The session cookie is `HttpOnly` and `SameSite=Lax`, and the session is stored
-  in PostgreSQL.
+- The session cookie is `HttpOnly`, `SameSite=Lax` and host only, so it never
+  leaves the site of the frontend.

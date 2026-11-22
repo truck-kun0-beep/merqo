@@ -31,7 +31,7 @@ public abstract class BusinessException extends RuntimeException {
     /**
      * Creates a business exception.
      *
-     * @param errorCode stable code such as {@code INSUFFICIENT_STOCK}
+     * @param errorCode stable code such as {@code VALIDATION_FAILED}
      * @param httpStatus the HTTP status the API should answer with
      * @param message a human readable explanation
      */

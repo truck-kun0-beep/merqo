@@ -193,14 +193,19 @@ with 512 MB of RAM.
 
 ---
 
-## A15 - The demo seeder does not exist yet
+## A15 - The demo data is written by the backend, not by a script
 
-**Decision:** `scripts\seed-demo.bat` reports that the demo data has not been
-written yet, and changes nothing in the database.
+**Decision:** the demo locations, the demo accounts and the demo permission
+templates are written by the `DemoSeeder` inside the backend, at every start
+when `DEMO_MODE=true`. `scripts\seed-demo.bat` only starts the backend once so
+the seed runs; it does not write rows itself.
 
-**Reason:** the brief says "build only what the current prompt asks" and the
-demo seed belongs to the prompt that introduces demo mode. A script that
-pretends to seed data would be a fake.
+**Reason:** the seed has to know the permission templates, the assignments and
+the delegations, and those rules live in the access module. A script that wrote
+the same rows by hand would be a second, weaker copy of those rules. Every
+contributor looks the rows up by their stable demo key, so the seed is
+idempotent: starting the backend twice gives the same rows as starting it once,
+and a real shop that is not in demo mode is never touched.
 
 ---
 
@@ -236,3 +241,24 @@ printer, Pathao, Steadfast, bKash or Nagad.
 **Reason:** the brief says the student has no hardware and no live API access,
 and that mocks and simulators are the proof. The live adapters for those
 services are still "unimplemented" and will be marked as such.
+
+---
+
+## A19 - The public allow list is the only way to open an endpoint
+
+**Decision:** the security chain ends with `anyRequest().authenticated()`, and
+the endpoints that may be called without signing in are the six names in
+`SecurityConfiguration.PUBLIC_ENDPOINTS`. The list is data in one place, and
+`PublicEndpointPolicyTest` proves against the real application context that no
+business endpoint is on it and that every name on it maps to an endpoint that
+really answers.
+
+**Reason:** the brief asks for a default deny. A rule that is written as
+"everything is closed except this list" cannot be widened by forgetting
+something, and the test turns the rule into something the build checks instead
+of something a reviewer has to remember.
+
+**Alternative that was not taken:** annotating every public endpoint with
+`@PermitAll` in the controllers. That would spread the rule over many files,
+and a developer who forgets the annotation would open an endpoint silently.
+

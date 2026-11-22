@@ -15,7 +15,7 @@ public class ConflictException extends BusinessException {
     /**
      * Creates a conflict error.
      *
-     * @param errorCode stable code such as {@code DUPLICATE_PAYMENT_REFERENCE}
+     * @param errorCode stable code such as {@code DUPLICATE_VALUE}
      * @param message a human readable explanation
      */
     public ConflictException(String errorCode, String message) {

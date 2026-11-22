@@ -16,7 +16,7 @@ public class ForbiddenException extends BusinessException {
     /**
      * Creates a forbidden error.
      *
-     * @param errorCode stable code such as {@code BRANCH_SCOPE_VIOLATION}
+     * @param errorCode stable code such as {@code FORBIDDEN}
      * @param message a human readable explanation
      */
     public ForbiddenException(String errorCode, String message) {

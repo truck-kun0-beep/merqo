@@ -17,11 +17,7 @@ function StatusCard({
   tone: 'good' | 'bad' | 'neutral'
 }) {
   const toneClass =
-    tone === 'good'
-      ? 'text-emerald-700'
-      : tone === 'bad'
-        ? 'text-rose-700'
-        : 'text-slate-900'
+    tone === 'good' ? 'text-emerald-700' : tone === 'bad' ? 'text-rose-700' : 'text-slate-900'
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">

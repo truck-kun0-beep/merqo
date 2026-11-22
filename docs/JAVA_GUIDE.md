@@ -31,6 +31,12 @@ comment that says what it is responsible for and which concept it demonstrates.
 | **Exceptions** | `com.merqo.common.error` | Expected failures are modelled as exceptions with a stable error code, so the API always answers in the same format. |
 | **Static factory methods** | `Money.of(...)`, `Money.parse(...)`, `ProblemDetail.of(...)` | The class controls how its objects are created, so every instance is valid. |
 | **Dependency injection** | `Clock` injected into `BusinessTime` callers and `GlobalExceptionHandler` | The time source is a parameter, not a hidden global. Tests can freeze it. |
+| **Encapsulation** | `com.merqo.access.AccessContext` | The services never look at the permission sets themselves. They ask this object, and it answers "may I do this everywhere?", "may I do this here?" and "which places may I see?". |
+| **Abstraction** | `com.merqo.access.PermissionResolver` and `com.merqo.access.DelegationPolicy` | The rules of who may do what are plain Java objects with no Spring in them, so they can be unit tested on their own. |
+| **Inheritance** | `BusinessException` → `NotFoundException`, `ConflictException`, `ValidationException`, `ForbiddenException`, `UnauthenticatedException` | All expected failures share one parent, so the error handler treats them uniformly. |
+| **Strategy** | `com.merqo.user.SessionSecurityContextRepository` | Where the signed in user is kept is one replaceable piece. Swapping it changes nothing else. |
+| **Interfaces** | `com.merqo.user.AppUserRepository`, `com.merqo.audit.AuditLogRepository` | The services depend on the contract, not on Spring Data. The audit repository even has no update and no delete method, so the append only rule is part of the type. |
+| **Builder** | `com.merqo.audit.AuditEvent.Builder` | An audit event has many optional parts. The builder keeps the call site readable and gives the constructor one meaning. |
 
 ---
 
@@ -110,13 +116,18 @@ proves that `2026-11-20T17:59:59Z` still belongs to the 20th in Dhaka, while
 ```
 BusinessException                (abstract, extends RuntimeException)
 ├── NotFoundException            404  NOT_FOUND
-├── ConflictException            409  DUPLICATE_PAYMENT_REFERENCE, ...
-├── ValidationException          422  INSUFFICIENT_STOCK, ...
-└── ForbiddenException           403  BRANCH_SCOPE_VIOLATION, ...
+├── ConflictException            409  DUPLICATE_VALUE, ...
+├── ValidationException          422  VALIDATION_FAILED, PASSWORD_POLICY, ...
+├── ForbiddenException           403  FORBIDDEN, OWNER_PROTECTED, ...
+└── UnauthenticatedException     401  UNAUTHENTICATED
 ```
 
 Each subclass sets its own stable error code and HTTP status in the
 constructor. The parent keeps them read-only.
+
+The full list of codes lives in one place, `com.merqo.common.error.ErrorCodes`,
+so the backend, the frontend and the documentation all agree on the same
+strings.
 
 **Why unchecked (extends `RuntimeException`):** a broken business rule is not a
 programming mistake. Forcing every caller to write `try/catch` would add noise
@@ -243,9 +254,84 @@ explicit.
 A: The backend is the only gate. Every endpoint resolves the user's assigned
 locations from the server side session, and the branch id in the request body is
 never trusted. If the requested location is not in the user's list, the service
-throws `ForbiddenException` with the code `BRANCH_SCOPE_VIOLATION` and the
-handler answers `403`. The frontend only hides navigation items for usability;
-it is not a security mechanism.
+throws `NotFoundException` and the handler answers `404`, not `403`. That
+difference matters: a `403` would tell the caller that the branch exists, and a
+`404` tells them nothing at all. The frontend only hides navigation items for
+usability; it is not a security mechanism.
+
+**Q: Why is the answer `404` and not `403` for a place outside the scope?**
+A: Because `403` means "you may not do this, and it does exist". A manager who
+asks for another manager's branch should not learn that the branch is there. The
+integration test `locationOutsideTheScopeIsNotFound` proves that the answer is
+`404 NOT_FOUND`.
+
+**Q: How are the permissions of a manager put together?**
+A: From four sources, in this order: the permission templates the account holds,
+the overrides that name one account, the delegation list that says what a manager
+may hand out, and the assignments that say where the account works. The
+`PermissionResolver` merges them into one `EffectivePermissions` object, and that
+object decides whether a permission is held globally or only at certain
+locations.
+
+**Q: Why may a manager not hand out a permission they do not hold themselves?**
+A: Otherwise a manager could give away more power than they have, and the
+permission model would grow downwards without any limit. The `DelegationPolicy`
+checks all of these before it allows anything: the permission is not owner only,
+it is flagged delegable, it is on the manager's own delegation list, the manager
+holds it at that location themselves, the location is inside the manager's
+scope, and the target account is neither another manager nor the owner. It
+answers with a `Decision` that carries the reason, so the error message can name
+the rule that was broken.
+
+**Q: Why is the password hash never stored in a readable field?**
+A: It is a BCrypt hash, not the password. `AppUser` has a getter for it because
+Spring Security needs it to check a sign in, but no setter and no endpoint ever
+returns it. The API answers with the account fields only, and the audit log
+redacts anything whose name contains "password", "hash", "token" or "secret"
+before the row is written.
+
+**Q: Why does a wrong password give the same answer as an account that does not
+exist?**
+A: Otherwise the answer itself leaks which usernames are real. `AuthService`
+always answers `401 INVALID_CREDENTIALS` with the message "Invalid username or
+password", and it computes a BCrypt hash even when the account does not exist,
+so both answers take about the same time and the timing does not leak the
+existence of the account either.
+
+**Q: What stops somebody from signing in over and over with wrong passwords?**
+A: `LoginThrottlePolicy` counts the failed attempts of an identifier and of an
+address inside a window of fifteen minutes. After five failures the account is
+locked for fifteen minutes, and after twenty failures from one address the
+address is throttled. The counter lives in its own table, so a restart of the
+backend does not clear it. A successful sign in resets the counter.
+
+**Q: Why does the session only keep the user id?**
+A: The session holds the id of the account and nothing else. The account, its
+templates, its overrides and its assignments are read again on every request, so
+deactivating an account or changing a permission takes effect on the very next
+request instead of at the next sign in.
+
+**Q: Why is the CSRF token in a cookie that JavaScript may read?**
+A: Because it is not a secret. It only proves that the request came from this
+site and not from another one. The browser reads the `XSRF-TOKEN` cookie and
+sends the value back in the `X-XSRF-TOKEN` header, and the backend compares the
+two. A request that changes something without the header is refused with
+`403 CSRF_TOKEN_INVALID`.
+
+**Q: Why is the session cookie `HttpOnly` and without a `Domain`?**
+A: `HttpOnly` means a script cannot read the session id, so a cross site script
+cannot steal it. Without a `Domain` attribute the cookie stays host only, so it
+never travels to another host even though the backend lives on another one.
+`SameSite=Lax` is the right choice for a single page application on one origin.
+
+**Q: Why is the list query written with `coalesce` instead of `:filter is null`?**
+A: Because a parameter that only appears in a null check has no type of its own.
+Hibernate sends it as an untyped null and PostgreSQL cannot tell what it is, so
+the database refuses the whole query with "could not determine data type of
+parameter". Putting the parameter next to the column it filters gives it that
+type. The two columns that may be empty are compared with `is not distinct from`,
+because a plain equality would drop the rows whose column is empty, and those
+rows are exactly the company wide events such as a sign in.
 
 **Q: Why does the test suite use a real PostgreSQL and not H2?**
 A: Because the hardest requirement is concurrency: two threads must not be able
@@ -253,6 +339,16 @@ to sell the same last item. That behaviour depends on how PostgreSQL locks
 rows, and H2 does not lock the same way. A test against H2 would pass and the
 production system would still be broken. The integration test therefore runs
 against `merqo_test`.
+
+**Q: How do you know that no endpoint is open by accident?**
+A: The security chain ends with `anyRequest().authenticated()`, so only the
+names on the public allow list in `SecurityConfiguration.PUBLIC_ENDPOINTS` are
+open. `PublicEndpointPolicyTest` starts the real application context, walks
+every endpoint the handler mapping knows, and proves two things: no business
+endpoint is on the allow list, and every name on the allow list really maps to
+an endpoint that answers. A new endpoint that nobody added to the list is
+therefore refused by the chain, and the test fails the moment somebody adds an
+endpoint and forgets to think about it.
 
 ---
 
@@ -359,7 +455,60 @@ classDiagram
     HealthController ..> BusinessTime : uses
 ```
 
-### 8.2 The request path
+### 8.2 The access module
+
+The rules of who may do what, and where.
+
+```mermaid
+classDiagram
+    class AccessContext {
+        -UUID userId
+        -String username
+        -AccountType accountType
+        -EffectivePermissions permissions
+        -Set~UUID~ scopeLocationIds
+        +isOwner() boolean
+        +can(Permission) boolean
+        +can(Permission,UUID) boolean
+        +requireGlobal(Permission) void
+        +require(Permission,UUID) void
+        +visibleLocationIds(Permission) Set~UUID~
+        +getScopeLocationIds() Set~UUID~
+    }
+
+    class PermissionResolver {
+        +resolve(Permission,UUID,List,Set) EffectivePermissions
+    }
+
+    class DelegationPolicy {
+        +check(DelegationPolicy$Request) Decision
+    }
+
+    class UserService {
+        +search(AccessContext,String,AccountType,Boolean,UUID,Pageable) Page
+        +create(AccessContext,...) CreatedUser
+        +requireMayManage(AccessContext,AppUser) void
+    }
+
+    class AuditService {
+        +record(AuditEvent) void
+    }
+
+    class AccessContext ..> EffectivePermissions : holds
+    AccessContext ..> Permission : asks about
+    UserService ..> AccessContext : asks
+    UserService ..> PermissionResolver : uses
+    UserService ..> DelegationPolicy : uses
+    UserService ..> AuditService : writes to
+```
+
+**Why `AccessContext` is passed around instead of the permission lists:** the
+services never build a rule like "the permission is there and the location is in
+the scope". They ask one object, and that object knows the two rules and the
+error codes that go with them. A service cannot forget to check, because the
+check is a method on the object it already holds.
+
+### 8.3 The request path
 
 ```mermaid
 sequenceDiagram
@@ -381,7 +530,45 @@ sequenceDiagram
     Note over F: every log line now carries the correlation id
 ```
 
-### 8.3 How the modules will fit together
+### 8.4 The sign in request path
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as SecurityFilterChain
+    participant C as CsrfTokenCookieFilter
+    participant A as AuthController
+    participant T as AuthService
+    participant D as PostgreSQL
+
+    B->>S: GET /api/v1/auth/status
+    S->>C: pass the request on
+    C->>C: read the token, so the XSRF-TOKEN cookie is written
+    C-->>B: 200 + the CSRF cookie
+
+    B->>S: POST /api/v1/auth/login (X-XSRF-TOKEN header)
+    S->>S: compare the header with the cookie
+    S->>A: the token is good, go on
+    A->>T: login(identifier, password, ip, correlationId)
+    T->>D: SELECT the account, count the recent attempts
+    D-->>T: the account and the attempt history
+    T->>T: check the password, apply the throttle
+    T-->>A: the signed in account
+    A->>A: start a new session, store only the user id
+    A-->>B: 200 + the MERQO_SESSION cookie (HttpOnly, host only)
+```
+
+**Why the session lives in PostgreSQL:** the backend restarts on a free hosting
+plan, sometimes several times a day. A session held in memory would sign every
+user out each time. Only the session id travels in the cookie, so a stolen
+cookie is worth much less than a stolen session table.
+
+**Why the CSRF token travels in a readable cookie:** it is not a secret. It only
+proves that the request came from this site and not from another one, so the
+browser may read it and send it back in a header. A request that changes
+something without it is refused with `403 CSRF_TOKEN_INVALID`.
+
+### 8.5 How the modules will fit together
 
 The business modules are added one prompt at a time. They always follow the
 same shape:

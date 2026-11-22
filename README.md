@@ -14,8 +14,9 @@ both are hosted for free.
 
 ## What is in this repository right now
 
-This is the **bootstrap** step. The foundation is in place and the application
-runs end to end, but no business feature has been built yet.
+The foundation is in place and the application runs end to end. The **auth and
+access** step is finished: people sign in, and what they may do and where they
+may do it is decided by the backend, never by the browser.
 
 | Area | Status |
 | --- | --- |
@@ -26,7 +27,13 @@ runs end to end, but no business feature has been built yet.
 | Frontend shell, routing, same-origin API client, waking screen, health home page | Done |
 | Cloudflare Pages proxy for `/api` | Done |
 | Dockerfile, `render.yaml`, `.bat` scripts, documentation | Done |
-| Business features (auth, catalog, POS, orders, couriers, finance, AI) | Not started, one prompt at a time |
+| Sign in, sign out, sessions in PostgreSQL, login throttling, password policy | Done |
+| Accounts and access: roles, permission templates, overrides, delegations, branch assignments | Done |
+| Locations: warehouse and branches, with the rules that protect them | Done |
+| Business settings and the append only audit log | Done |
+| Screens: people, one account, permission templates, locations, audit, settings | Done |
+| Default deny: a test proves that no endpoint is open by accident | Done |
+| Business features (catalog, POS, orders, couriers, finance, AI) | Not started, one prompt at a time |
 
 ---
 
@@ -36,6 +43,7 @@ runs end to end, but no business feature has been built yet.
 | --- | --- |
 | [SETUP.md](SETUP.md) | Windows 11 local setup, step by step |
 | [DEPLOY.md](DEPLOY.md) | Click-by-click deployment to GitHub, Supabase, Render and Cloudflare Pages |
+| [docs/DEPLOY-CHECKLIST.md](docs/DEPLOY-CHECKLIST.md) | The same deployment as a checklist, with the live login check of Prompt 1 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Modules, packages, patterns, module boundaries |
 | [docs/JAVA_GUIDE.md](docs/JAVA_GUIDE.md) | OOP concepts mapped to real classes, viva questions, class diagrams |
 | [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md) | Every decision taken where the brief left room |
@@ -75,14 +83,21 @@ merqo/
 │   └── src/
 │       ├── main/java/com/merqo/
 │       │   ├── MerqoApplication.java
-│       │   └── common/      money, time, error, web, config
+│       │   ├── common/      money, time, error, web, config
+│       │   ├── auth/        login, sessions, first owner
+│       │   ├── user/        accounts, passwords, throttling
+│       │   ├── access/      permissions, templates, delegations
+│       │   ├── location/    warehouse, branches
+│       │   ├── settings/    the typed business settings
+│       │   ├── audit/       the append only audit log
+│       │   └── demo/        the demo seed
 │       ├── main/resources/
 │       │   ├── application*.yml
 │       │   └── db/migration/  Flyway migrations (the schema owner)
 │       └── test/java/com/merqo/
 ├── frontend/                React + TypeScript + Vite + Tailwind
 │   ├── functions/api/       Cloudflare Pages Function that proxies /api
-│   └── src/                 api, components, hooks, pages, lib
+│   └── src/                 api, components, hooks, lib, pages, session
 ├── scripts/                 Windows .bat helper scripts
 ├── docs/                    Architecture, Java guide, assumptions, API spec
 ├── tools/                   Small developer utilities

@@ -469,3 +469,39 @@ every time, so there is nothing to keep in step.
 **Effect:** the same reasoning applies to the available stock of a balance:
 it is `onHand - reserved`, not a column of its own.
 
+
+
+---
+
+A32 - A location may have more than one open stock count
+
+**Decision:** starting a stock count never looks at the counts that are already
+open. A location may have several counts in progress at the same time, and
+every one of them is its own document with its own number.
+
+**Reason:** the Phase 2 rules do not forbid it, and the rule that was in the
+code broke four required flows: a count that was never applied blocked the
+next count of the same branch forever. Two counters may also count two
+categories of the same branch at the same time, which is a normal thing to do
+in a shop with more than one stock taker.
+
+**Effect:** the check "there is already a count in progress at this location"
+is gone from `StockService.startCount`. The count number comes from the
+sequence `count_number_sequence`, so every count still has its own number.
+
+---
+
+A33 - The movement history has a stable order
+
+**Decision:** the movement history is ordered by the creation moment and then
+by the sequence number of the row. The sequence number is written by the
+database (`stock_movements.seq`), never by the application.
+
+**Reason:** the clock of Windows has a resolution of about fifteen
+milliseconds, so two movements of the same request can carry the same moment.
+Ordering by the moment alone left the order between them undefined, and a
+test that reads the newest movement first then read the wrong row.
+
+**Effect:** the column was added in the Flyway version `V5`, which never edits
+an applied migration. The append only trigger of the table is still in place
+and still blocks every UPDATE and every DELETE.

@@ -102,6 +102,7 @@ public class InventoryController {
      * The movements of the locations the caller may see.
      *
      * @param locationId the location filter
+     * @param variantId the variant filter
      * @param page the page number
      * @param size the page size
      * @return the page of movements
@@ -110,12 +111,13 @@ public class InventoryController {
     @Operation(summary = "The movements of the locations the caller may see")
     public PageResponse<Map<String, Object>> listMovements(
             @RequestParam(required = false) UUID locationId,
+            @RequestParam(required = false) UUID variantId,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         AccessContext context = currentUserService.requireAccessContext();
         PageRequest request = PageRequest.of(page, size, "id", PageRequest.ASC);
         Page<StockMovement> result =
-                stockService.listMovements(context, locationId, request.toSpring());
+                stockService.listMovements(context, locationId, variantId, request.toSpring());
         List<Map<String, Object>> items = new ArrayList<>();
         result.forEach(movement -> items.add(toMovement(movement)));
         return PageResponse.of(

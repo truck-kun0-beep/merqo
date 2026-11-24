@@ -122,6 +122,23 @@ public class PromotionService {
     // ---- Reads --------------------------------------------------------------
 
     /**
+     * The locations the caller may see for one permission.
+     *
+     * <p>The owner holds every permission everywhere, so the owner sees every location of the
+     * business. Everybody else sees the locations where the permission is effective.
+     *
+     * @param context the caller
+     * @param permission the permission
+     * @return the location ids, never {@code null}
+     */
+    private Set<UUID> visibleLocations(AccessContext context, Permission permission) {
+        if (context.isOwner()) {
+            return new LinkedHashSet<>(locationRepository.findAllIds());
+        }
+        return context.visibleLocationIds(permission);
+    }
+
+    /**
      * The promotions the caller may see.
      *
      * @param context the caller
@@ -129,7 +146,6 @@ public class PromotionService {
      */
     @Transactional(readOnly = true)
     public List<Promotion> list(AccessContext context) {
-        Set<UUID> visible = context.visibleLocationIds(Permission.DISCOUNT_MANAGE);
         List<Promotion> promotions = promotionRepository.findAllByOrderByCreatedAtDesc();
         List<Promotion> result = new ArrayList<>();
         for (Promotion promotion : promotions) {
@@ -561,7 +577,7 @@ public class PromotionService {
         if (context.can(Permission.DISCOUNT_MANAGE)) {
             return true;
         }
-        Set<UUID> visible = context.visibleLocationIds(Permission.DISCOUNT_MANAGE);
+        Set<UUID> visible = visibleLocations(context, Permission.DISCOUNT_MANAGE);
         if (visible.isEmpty()) {
             return false;
         }

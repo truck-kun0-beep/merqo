@@ -42,7 +42,12 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
     /**
      * The movements the caller may see, newest first.
      *
+     * <p>The order is the creation moment and then the sequence number. The moment alone is not
+     * enough: the clock of Windows has a resolution of about fifteen milliseconds, so two movements
+     * of the same request can carry the same moment. The sequence number is the tiebreaker.
+     *
      * @param locationIds the locations the caller may see
+     * @param variantId the variant filter, may be {@code null} for every variant
      * @param pageable the paging
      * @return the page of movements
      */
@@ -50,9 +55,13 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
             """
             select m from StockMovement m
             where m.locationId in :locationIds
-            order by m.createdAt desc
+              and (:variantId is null or m.variantId = :variantId)
+            order by m.createdAt desc, m.seq desc
             """)
-    Page<StockMovement> search(@Param("locationIds") List<UUID> locationIds, Pageable pageable);
+    Page<StockMovement> search(
+            @Param("locationIds") List<UUID> locationIds,
+            @Param("variantId") UUID variantId,
+            Pageable pageable);
 
     /**
      * The movements of one variant at one location that happened at or after a moment.

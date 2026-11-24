@@ -148,6 +148,23 @@ public class StockService {
     // ---- Readings -----------------------------------------------------------
 
     /**
+     * The locations the caller may see for one permission.
+     *
+     * <p>The owner holds every permission everywhere, so the owner sees every location of the
+     * business. Everybody else sees the locations where the permission is effective.
+     *
+     * @param context the caller
+     * @param permission the permission
+     * @return the location ids, never {@code null}
+     */
+    private Set<UUID> visibleLocations(AccessContext context, Permission permission) {
+        if (context.isOwner()) {
+            return new LinkedHashSet<>(locationRepository.findAllIds());
+        }
+        return context.visibleLocationIds(permission);
+    }
+
+    /**
      * The stock of the locations the caller may see.
      *
      * @param context the caller
@@ -165,11 +182,13 @@ public class StockService {
             boolean lowStockOnly,
             boolean includeInactive) {
 
-        Set<UUID> visible = context.visibleLocationIds(Permission.INVENTORY_VIEW);
-        if (visible.isEmpty()) {
-            return List.of();
+        Set<UUID> visible = visibleLocations(context, Permission.INVENTORY_VIEW);
+        if (locationId != null && !visible.contains(locationId)) {
+            // The location is outside the scope of the caller. The answer is a 404, so the caller
+            // cannot even learn that the location exists.
+            throw new NotFoundException("The requested record was not found.");
         }
-        Set<UUID> wanted = locationId == null ? visible : intersect(visible, Set.of(locationId));
+        Set<UUID> wanted = locationId == null ? visible : Set.of(locationId);
         if (wanted.isEmpty()) {
             return List.of();
         }
@@ -225,7 +244,7 @@ public class StockService {
      */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> locationTotals(AccessContext context) {
-        Set<UUID> visible = context.visibleLocationIds(Permission.INVENTORY_VIEW);
+        Set<UUID> visible = visibleLocations(context, Permission.INVENTORY_VIEW);
         if (visible.isEmpty()) {
             return List.of();
         }
@@ -274,19 +293,19 @@ public class StockService {
     public org.springframework.data.domain.Page<StockMovement> listMovements(
             AccessContext context,
             UUID locationId,
+            UUID variantId,
             org.springframework.data.domain.Pageable pageable) {
-        Set<UUID> visible = context.visibleLocationIds(Permission.INVENTORY_VIEW);
-        if (visible.isEmpty()) {
-            return org.springframework.data.domain.Page.empty(pageable);
+        Set<UUID> visible = visibleLocations(context, Permission.INVENTORY_VIEW);
+        if (locationId != null && !visible.contains(locationId)) {
+            // The location is outside the scope of the caller, so the answer is a 404.
+            throw new NotFoundException("The requested record was not found.");
         }
         List<UUID> wanted =
-                locationId == null
-                        ? new ArrayList<>(visible)
-                        : new ArrayList<>(intersect(visible, Set.of(locationId)));
+                locationId == null ? new ArrayList<>(visible) : new ArrayList<>(Set.of(locationId));
         if (wanted.isEmpty()) {
             return org.springframework.data.domain.Page.empty(pageable);
         }
-        return movementRepository.search(wanted, pageable);
+        return movementRepository.search(wanted, variantId, pageable);
     }
 
     // ---- Adjustments --------------------------------------------------------
@@ -432,7 +451,7 @@ public class StockService {
      */
     @Transactional(readOnly = true)
     public List<StockAdjustment> listAdjustments(AccessContext context, UUID locationId) {
-        Set<UUID> visible = context.visibleLocationIds(Permission.INVENTORY_VIEW);
+        Set<UUID> visible = visibleLocations(context, Permission.INVENTORY_VIEW);
         if (visible.isEmpty()) {
             return List.of();
         }
@@ -557,12 +576,8 @@ public class StockService {
             throw new ValidationException(
                     ErrorCodes.VALIDATION_FAILED, "An inactive location has no stock to count.");
         }
-        if (countRepository
-                .findFirstByLocationIdAndStatus(locationId, StockCount.Status.IN_PROGRESS)
-                .isPresent()) {
-            throw new ConflictException(
-                    ErrorCodes.CONFLICT, "There is already a count in progress at this location.");
-        }
+        // A location may have more than one open count. The Phase 2 rules do not forbid it, and two
+        // counters may count two categories of the same branch at the same time.
 
         Instant now = Instant.now(clock);
         StockCount count =
@@ -820,8 +835,8 @@ public class StockService {
                         .findById(countId)
                         .orElseThrow(
                                 () -> new NotFoundException("The requested record was not found."));
-        if (!context.visibleLocationIds(Permission.INVENTORY_VIEW).contains(count.getLocationId())
-                && !context.visibleLocationIds(Permission.STOCK_COUNT)
+        if (!visibleLocations(context, Permission.INVENTORY_VIEW).contains(count.getLocationId())
+                && !visibleLocations(context, Permission.STOCK_COUNT)
                         .contains(count.getLocationId())) {
             throw new NotFoundException("The requested record was not found.");
         }
@@ -837,7 +852,7 @@ public class StockService {
      */
     @Transactional(readOnly = true)
     public List<StockCount> listCounts(AccessContext context, UUID locationId) {
-        Set<UUID> visible = context.visibleLocationIds(Permission.INVENTORY_VIEW);
+        Set<UUID> visible = visibleLocations(context, Permission.INVENTORY_VIEW);
         if (visible.isEmpty()) {
             return List.of();
         }

@@ -80,6 +80,15 @@ public class StockMovement {
     @Column(name = "correlation_id", length = 64)
     private String correlationId;
 
+    /**
+     * The tiebreaker of the movement order.
+     *
+     * <p>The database writes it, so it only grows. The creation moment alone is not a stable order,
+     * because the clock of Windows has a resolution of about fifteen milliseconds.
+     */
+    @Column(name = "seq", nullable = false, insertable = false, updatable = false)
+    private Long seq;
+
     /** Required by JPA. */
     protected StockMovement() {}
 
@@ -256,5 +265,14 @@ public class StockMovement {
      */
     public String getCorrelationId() {
         return correlationId;
+    }
+
+    /**
+     * The tiebreaker of the movement order.
+     *
+     * @return the sequence number
+     */
+    public Long getSeq() {
+        return seq;
     }
 }

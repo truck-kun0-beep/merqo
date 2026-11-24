@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -129,7 +130,7 @@ public class TransferService {
      */
     @Transactional(readOnly = true)
     public List<StockTransfer> list(AccessContext context, TransferStatus status) {
-        Set<UUID> visible = context.visibleLocationIds(Permission.TRANSFER_VIEW);
+        Set<UUID> visible = visibleLocations(context, Permission.TRANSFER_VIEW);
         if (visible.isEmpty()) {
             return List.of();
         }
@@ -680,10 +681,26 @@ public class TransferService {
     }
 
     private boolean maySee(AccessContext context, StockTransfer transfer) {
-        return context.visibleLocationIds(Permission.TRANSFER_VIEW)
-                        .contains(transfer.getSourceLocationId())
-                || context.visibleLocationIds(Permission.TRANSFER_VIEW)
-                        .contains(transfer.getDestinationLocationId());
+        Set<UUID> visible = visibleLocations(context, Permission.TRANSFER_VIEW);
+        return visible.contains(transfer.getSourceLocationId())
+                || visible.contains(transfer.getDestinationLocationId());
+    }
+
+    /**
+     * The locations the caller may see for one permission.
+     *
+     * <p>The owner holds every permission everywhere, so the owner sees every location of the
+     * business. Everybody else sees the locations where the permission is effective.
+     *
+     * @param context the caller
+     * @param permission the permission
+     * @return the location ids, never {@code null}
+     */
+    private Set<UUID> visibleLocations(AccessContext context, Permission permission) {
+        if (context.isOwner()) {
+            return new LinkedHashSet<>(locationRepository.findAllIds());
+        }
+        return context.visibleLocationIds(permission);
     }
 
     private void requireStatus(StockTransfer transfer, TransferStatus expected) {

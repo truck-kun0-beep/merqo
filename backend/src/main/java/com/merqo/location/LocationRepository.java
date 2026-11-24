@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 /**
  * The database access for locations.
@@ -44,6 +45,17 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
      * @return the active locations
      */
     List<Location> findByActiveTrueOrderByCodeAsc();
+
+    /**
+     * The id of every location of the business.
+     *
+     * <p>The owner holds every permission everywhere, so the lists of the owner are scoped with
+     * this answer instead of with the assignments of the owner, which are none.
+     *
+     * @return the location ids
+     */
+    @Query("select l.id from Location l")
+    List<UUID> findAllIds();
 
     /**
      * Finds the active online fulfilment location.

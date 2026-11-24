@@ -109,23 +109,31 @@ export default function AppShell() {
       id: 'catalog',
       label: 'Catalog',
       items: [
-        { to: '/catalog/products', label: 'Products', visible: false },
-        { to: '/promotions', label: 'Promotions', visible: false },
-        { to: '/catalog/import', label: 'CSV import', visible: false },
+        { to: '/catalog/products', label: 'Products', visible: can('PRODUCT_VIEW') },
+        { to: '/promotions', label: 'Promotions', visible: can('DISCOUNT_MANAGE') },
+        {
+          to: '/catalog/import',
+          label: 'CSV import',
+          visible: can('PRODUCT_CREATE') || can('PRODUCT_EDIT'),
+        },
       ],
     },
     {
       id: 'inventory',
       label: 'Inventory',
       items: [
-        { to: '/inventory', label: 'Stock', visible: false },
-        { to: '/inventory/counts', label: 'Stock counts', visible: false },
+        { to: '/inventory', label: 'Stock', visible: can('INVENTORY_VIEW') },
+        {
+          to: '/inventory/counts',
+          label: 'Stock counts',
+          visible: can('INVENTORY_VIEW') || can('STOCK_COUNT'),
+        },
       ],
     },
     {
       id: 'transfers',
       label: 'Transfers',
-      items: [{ to: '/transfers', label: 'Stock transfers', visible: false }],
+      items: [{ to: '/transfers', label: 'Stock transfers', visible: can('TRANSFER_VIEW') }],
     },
     {
       id: 'operations',

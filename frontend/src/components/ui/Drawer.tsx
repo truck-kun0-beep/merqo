@@ -44,6 +44,7 @@ export function Drawer({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       previousFocusRef.current?.focus?.()
+      window.dispatchEvent(new CustomEvent('merqo:dialog-closed'))
     }
   }, [open, onClose])
 

@@ -35,6 +35,7 @@ export interface StockFilters {
  */
 export interface MovementFilters {
   locationId?: string
+  variantId?: string
   page?: number
   size?: number
 }

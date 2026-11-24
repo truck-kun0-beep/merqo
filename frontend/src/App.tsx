@@ -9,17 +9,19 @@ import PermissionTemplatesPage from './pages/PermissionTemplatesPage'
 import AuditPage from './pages/AuditPage'
 import SettingsPage from './pages/SettingsPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
+import ProductsPage from './pages/ProductsPage'
+import ProductDetailPage from './pages/ProductDetailPage'
+import CatalogImportPage from './pages/CatalogImportPage'
+import PromotionsPage from './pages/PromotionsPage'
+import InventoryPage from './pages/InventoryPage'
+import StockCountsPage from './pages/StockCountsPage'
+import TransfersPage from './pages/TransfersPage'
+import TransferDetailPage from './pages/TransferDetailPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RequireSession, { RequireSignedOut } from './session/RequireSession'
 
 /**
  * The route table of the Merqo web client.
- *
- * Every business screen is added by the prompt that needs it. For now there is
- * the login page, the health home page, the locations, the people, the account
- * detail, the permission templates, the audit and the settings screens.
- *
- * @returns the application element
  */
 export default function App() {
   return (
@@ -38,6 +40,70 @@ export default function App() {
           element={
             <RequireSession>
               <HomePage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="catalog/products"
+          element={
+            <RequireSession permission="PRODUCT_VIEW">
+              <ProductsPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="catalog/products/:id"
+          element={
+            <RequireSession permission="PRODUCT_VIEW">
+              <ProductDetailPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="catalog/import"
+          element={
+            <RequireSession anyPermission={['PRODUCT_CREATE', 'PRODUCT_EDIT']}>
+              <CatalogImportPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="promotions"
+          element={
+            <RequireSession permission="DISCOUNT_MANAGE">
+              <PromotionsPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="inventory"
+          element={
+            <RequireSession permission="INVENTORY_VIEW">
+              <InventoryPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="inventory/counts"
+          element={
+            <RequireSession anyPermission={['INVENTORY_VIEW', 'STOCK_COUNT']}>
+              <StockCountsPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="transfers"
+          element={
+            <RequireSession permission="TRANSFER_VIEW">
+              <TransfersPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="transfers/:id"
+          element={
+            <RequireSession permission="TRANSFER_VIEW">
+              <TransferDetailPage />
             </RequireSession>
           }
         />

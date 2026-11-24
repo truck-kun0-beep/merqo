@@ -9,9 +9,11 @@ import ServerWakingUp from '../components/ServerWakingUp'
 export default function RequireSession({
   children,
   permission,
+  anyPermission,
 }: {
   children: ReactNode
   permission?: string
+  anyPermission?: string[]
 }) {
   const { user, isLoading, isBackendUnreachable, can } = useSession()
   const location = useLocation()
@@ -36,7 +38,12 @@ export default function RequireSession({
     return <Navigate to="/change-password" replace />
   }
 
-  if (permission && !can(permission)) {
+  const missingSingle = permission && !can(permission)
+  const missingAny =
+    anyPermission && anyPermission.length > 0 && !anyPermission.some((code) => can(code))
+
+  if (missingSingle || missingAny) {
+    const requiredLabel = permission ?? anyPermission?.join(' or ')
     return (
       <div
         role="alert"
@@ -44,8 +51,8 @@ export default function RequireSession({
       >
         <p className="font-semibold">This screen is not open to your account.</p>
         <p className="mt-1">
-          You do not hold the permission <code className="font-mono">{permission}</code>. Ask the
-          owner if you need it.
+          You do not hold the permission <code className="font-mono">{requiredLabel}</code>. Ask
+          the owner if you need it.
         </p>
       </div>
     )

@@ -542,7 +542,7 @@ function toUploadBody(file: File): FormData {
  * @param filters the filters
  * @returns the query string, with a leading question mark or empty
  */
-function toQueryString(filters: Record<string, string | number | boolean | undefined>): string {
+function toQueryString(filters: object): string {
   const parts: string[] = []
   for (const [key, value] of Object.entries(filters)) {
     if (value === undefined || value === '') {

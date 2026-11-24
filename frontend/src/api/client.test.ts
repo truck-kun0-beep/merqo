@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { API_BASE_PATH, apiRequest } from './client'
+import { API_BASE_PATH, apiRequest, toQueryString } from './client'
 import { ApiError, BackendUnreachableError } from './types'
+
+/**
+ * A filter written as an interface.
+ *
+ * <p>TypeScript gives an interface no implicit index signature, so this is the
+ * shape that a `Record<string, ...>` parameter would refuse. The helper has to
+ * accept it anyway, because the catalogue and the stock screens use exactly
+ * this shape.
+ */
+interface ProductFilters {
+  q?: string
+  activeOnly?: boolean
+  page?: number
+}
 
 /**
  * A response double that behaves like a real fetch response.
@@ -141,5 +155,27 @@ describe('apiRequest', () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+})
+
+describe('toQueryString', () => {
+  it('leaves out the filters that are not set', () => {
+    expect(toQueryString({ q: 'shirt', activeOnly: undefined, page: 2 })).toBe('?q=shirt&page=2')
+  })
+
+  it('returns nothing when no filter is set', () => {
+    expect(toQueryString({ q: undefined, activeOnly: false })).toBe('?activeOnly=false')
+    expect(toQueryString({})).toBe('')
+  })
+
+  it('accepts a filter that is declared as an interface', () => {
+    // The interface has no index signature, so this is the shape that a
+    // `Record<string, ...>` parameter would refuse to take.
+    const filters: ProductFilters = { q: 'shoe', activeOnly: true }
+    expect(toQueryString(filters)).toBe('?q=shoe&activeOnly=true')
+  })
+
+  it('escapes the key and the value', () => {
+    expect(toQueryString({ q: 'a b&c' })).toBe('?q=a%20b%26c')
   })
 })

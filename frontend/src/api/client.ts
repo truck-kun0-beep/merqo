@@ -100,6 +100,31 @@ export function isFormData(body: BodyInit | null | undefined): boolean {
 }
 
 /**
+ * Builds a query string from the filters that are actually set.
+ *
+ * <p><b>Why the parameter is a generic and not a {@code Record}.</b> TypeScript gives an
+ * `interface` no implicit index signature, so a filter that is declared as an interface
+ * cannot be handed to a function that wants `Record<string, ...>`. A type alias would work,
+ * but then the two ways of writing the same filter would behave differently, and only one
+ * of them would compile. The generic accepts both, so the caller keeps its named fields
+ * and the values are still checked here.
+ *
+ * @param filters the filters
+ * @returns the query string, with a leading question mark or empty
+ */
+export function toQueryString<T extends object>(filters: T): string {
+  const parts: string[] = []
+  const entries = filters as Record<string, string | number | boolean | undefined>
+  for (const [key, value] of Object.entries(entries)) {
+    if (value === undefined || value === '') {
+      continue
+    }
+    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+  }
+  return parts.length ? `?${parts.join('&')}` : ''
+}
+
+/**
  * Performs one request against the Merqo backend.
  *
  * The backend always answers failures with an RFC 7807 problem detail, so this

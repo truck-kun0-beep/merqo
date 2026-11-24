@@ -1,4 +1,4 @@
-import { apiRequest } from './client'
+import { apiRequest, toQueryString } from './client'
 import type {
   AdjustmentDetail,
   AdjustmentReason,
@@ -252,19 +252,3 @@ export function cancelStockCount(id: string): Promise<StockCountRow> {
   return apiRequest<StockCountRow>(`/inventory/counts/${id}/cancel`, { method: 'POST' })
 }
 
-/**
- * Builds a query string from the filters that are actually set.
- *
- * @param filters the filters
- * @returns the query string, with a leading question mark or empty
- */
-function toQueryString(filters: Record<string, string | number | boolean | undefined>): string {
-  const parts: string[] = []
-  for (const [key, value] of Object.entries(filters)) {
-    if (value === undefined || value === '') {
-      continue
-    }
-    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
-  }
-  return parts.length ? `?${parts.join('&')}` : ''
-}

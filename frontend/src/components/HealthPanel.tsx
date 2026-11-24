@@ -1,37 +1,28 @@
 import type { HealthReport } from '../api/types'
-import { formatDateTime } from '../lib/format'
+import { DateText, StatusPill } from './ui'
 
-/**
- * Shows one health value as a labelled card.
- *
- * @param props the label and the value
- * @returns the card element
- */
 function StatusCard({
   label,
   value,
-  tone,
+  status,
 }: {
   label: string
   value: string
-  tone: 'good' | 'bad' | 'neutral'
+  status?: 'UP' | 'DOWN'
 }) {
-  const toneClass =
-    tone === 'good' ? 'text-emerald-700' : tone === 'bad' ? 'text-rose-700' : 'text-slate-900'
-
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
       <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">{label}</p>
-      <p className={`mt-1 text-lg font-semibold ${toneClass}`}>{value}</p>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="text-base font-semibold text-slate-900">{value}</p>
+        {status ? <StatusPill status={status} /> : null}
+      </div>
     </div>
   )
 }
 
 /**
  * Renders the health report of the backend.
- *
- * @param props the health report
- * @returns the health panel element
  */
 export default function HealthPanel({ report }: { report: HealthReport }) {
   const applicationUp = report.status === 'UP'
@@ -46,18 +37,23 @@ export default function HealthPanel({ report }: { report: HealthReport }) {
         <StatusCard
           label="Application"
           value={applicationUp ? 'UP' : 'DOWN'}
-          tone={applicationUp ? 'good' : 'bad'}
+          status={applicationUp ? 'UP' : 'DOWN'}
         />
         <StatusCard
           label="Database"
           value={databaseUp ? 'UP' : 'DOWN'}
-          tone={databaseUp ? 'good' : 'bad'}
+          status={databaseUp ? 'UP' : 'DOWN'}
         />
-        <StatusCard label="Service" value={report.service} tone="neutral" />
-        <StatusCard label="Checked at" value={formatDateTime(report.time)} tone="neutral" />
+        <StatusCard label="Service" value={report.service} />
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+          <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">Checked at</p>
+          <p className="mt-2 text-base font-semibold text-slate-900">
+            <DateText value={report.time} withTime />
+          </p>
+        </div>
       </div>
       <p className="text-xs text-slate-500">
-        Business time (Asia/Dhaka): {formatDateTime(report.businessTime)}
+        Business time (Asia/Dhaka): <DateText value={report.businessTime} withTime />
       </p>
     </section>
   )

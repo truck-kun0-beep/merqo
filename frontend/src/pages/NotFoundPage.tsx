@@ -1,23 +1,24 @@
 import { Link } from 'react-router-dom'
+import { EmptyState } from '../components/ui'
 
 /**
  * The page shown for a URL that does not exist.
- *
- * @returns the not found page element
  */
 export default function NotFoundPage() {
   return (
-    <div className="mx-auto max-w-md py-16 text-center">
-      <h1 className="text-2xl font-semibold text-slate-900">Page not found</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        That address does not exist in Merqo. It may belong to a screen that has not been built yet.
-      </p>
-      <Link
-        to="/"
-        className="mt-6 inline-block rounded-md bg-merqo-600 px-4 py-2 text-sm font-medium text-white hover:bg-merqo-700"
-      >
-        Back to the overview
-      </Link>
+    <div className="mx-auto max-w-lg py-12">
+      <EmptyState
+        title="Page not found"
+        description="That address does not exist or has not been enabled for your workspace."
+        action={
+          <Link
+            to="/"
+            className="inline-flex h-9 items-center justify-center rounded-md bg-merqo-700 px-4 text-sm font-medium text-white transition-colors hover:bg-merqo-800"
+          >
+            Back to overview
+          </Link>
+        }
+      />
     </div>
   )
 }

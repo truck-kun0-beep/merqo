@@ -4,15 +4,16 @@ import { fetchSettings, saveSettings } from '../api/business'
 import { ApiError } from '../api/types'
 import type { SettingEntry, SettingsGroups } from '../api/models'
 import { useSession } from '../session/sessionContext'
+import { Button, ErrorState, Input, PageHeader, Select, Skeleton } from '../components/ui'
 
-/**
- * The groups of the settings screen, in the order they are shown.
- */
-const GROUP_ORDER: Array<keyof SettingsGroups> = ['BUSINESS', 'RECEIPT', 'TAX', 'THRESHOLDS']
+const GROUP_ORDER: Array<keyof SettingsGroups> = [
+  'BUSINESS',
+  'RECEIPT',
+  'TAX',
+  'INVENTORY',
+  'THRESHOLDS',
+]
 
-/**
- * The title of each group.
- */
 const GROUP_TITLES: Record<keyof SettingsGroups, string> = {
   BUSINESS: 'Business',
   RECEIPT: 'Receipt',
@@ -23,17 +24,6 @@ const GROUP_TITLES: Record<keyof SettingsGroups, string> = {
 
 /**
  * The business settings screen.
- *
- * It shows every business value in one place: the name of the shop, the receipt footer, the tax
- * rate and the thresholds that the later screens act on.
- *
- * The values are not hardcoded in the frontend. They come from the `settings` table through the
- * API, and the backend validates every value before it writes anything, so the screen cannot save
- * a value the business rules refuse.
- *
- * Only the owner may write. A manager may read the screen, but the save button is not there.
- *
- * @returns the settings screen element
  */
 export default function SettingsPage() {
   const { user } = useSession()
@@ -44,24 +34,20 @@ export default function SettingsPage() {
 
   if (query.isPending) {
     return (
-      <div
-        role="status"
-        className="rounded-xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-600"
-      >
-        Loading the settings...
+      <div role="status" aria-label="Loading settings" className="space-y-4">
+        <Skeleton className="h-16 w-full rounded-xl" />
+        <Skeleton className="h-56 w-full rounded-xl" />
       </div>
     )
   }
 
   if (query.error) {
     return (
-      <div
-        role="alert"
-        className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-6 text-sm text-rose-800"
-      >
-        <p className="font-medium">The settings could not be loaded.</p>
-        <p className="mt-1">{query.error.message}</p>
-      </div>
+      <ErrorState
+        title="The settings could not be loaded."
+        error={query.error}
+        onRetry={() => query.refetch()}
+      />
     )
   }
 
@@ -69,20 +55,15 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Settings</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          {isOwner
-            ? 'The business values of Merqo. Every screen reads them from here.'
-            : 'The business values of Merqo. Only the owner may change them.'}
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description={
+          isOwner
+            ? 'Business-wide configuration values shared across all locations.'
+            : 'Business-wide configuration values. Only the owner may change them.'
+        }
+      />
 
-      {/*
-        The form is a child component, so the draft of the values lives in its own state. The key
-        carries the saved values, which means the form is rebuilt when the server sends different
-        values and keeps the draft while the user is typing.
-      */}
       <SettingsForm
         key={savedValuesKey(groups)}
         groups={groups}
@@ -93,12 +74,6 @@ export default function SettingsPage() {
   )
 }
 
-/**
- * The form of the settings screen.
- *
- * @param props the groups, whether the caller is the owner and the callback after a save
- * @returns the form element
- */
 function SettingsForm({
   groups,
   isOwner,
@@ -109,9 +84,6 @@ function SettingsForm({
   onSaved: () => void
 }) {
   const saved = useMemo(() => flattenGroups(groups), [groups])
-
-  // The draft holds the values while the user edits them. The saved values stay untouched until
-  // the save succeeds, so a failed save never loses what is on the screen.
   const [draft, setDraft] = useState<Record<string, string>>(saved)
 
   const mutation = useMutation({
@@ -127,19 +99,10 @@ function SettingsForm({
   }
   const changeCount = Object.keys(changed).length
 
-  /**
-   * Changes one value in the draft.
-   *
-   * @param key the key of the setting
-   * @param value the new value
-   */
   function handleChange(key: string, value: string) {
     setDraft((previous) => ({ ...previous, [key]: value }))
   }
 
-  /**
-   * Puts the saved values back into the draft.
-   */
   function handleReset() {
     setDraft(saved)
   }
@@ -147,19 +110,19 @@ function SettingsForm({
   return (
     <>
       {mutation.isError ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-800"
-        >
-          <p className="font-medium">The settings were not saved.</p>
-          <p className="mt-1">{readError(mutation.error)}</p>
-        </div>
+        <ErrorState
+          title="The settings were not saved."
+          message={readError(mutation.error)}
+          correlationId={
+            mutation.error instanceof ApiError ? mutation.error.correlationId : undefined
+          }
+        />
       ) : null}
 
       {mutation.isSuccess ? (
         <div
           role="status"
-          className="rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-800"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 text-sm font-medium text-emerald-900"
         >
           The settings were saved.
         </div>
@@ -177,23 +140,22 @@ function SettingsForm({
       ))}
 
       {isOwner ? (
-        <div className="flex items-center gap-3 border-t border-slate-200 pt-4">
-          <button
-            type="button"
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+          <Button
             onClick={() => mutation.mutate(changed)}
-            disabled={changeCount === 0 || mutation.isPending}
-            className="rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={changeCount === 0}
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
           >
-            {mutation.isPending ? 'Saving...' : 'Save the settings'}
-          </button>
-          <button
-            type="button"
+            Save the settings
+          </Button>
+          <Button
+            variant="outline"
             onClick={handleReset}
             disabled={changeCount === 0 || mutation.isPending}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Undo the changes
-          </button>
+          </Button>
           <span className="text-xs text-slate-500">
             {changeCount === 0 ? 'No change to save.' : `${changeCount} value(s) changed.`}
           </span>
@@ -203,12 +165,6 @@ function SettingsForm({
   )
 }
 
-/**
- * One group of settings.
- *
- * @param props the title, the entries, the draft and the change handler
- * @returns the group element
- */
 function SettingsGroup({
   title,
   entries,
@@ -228,32 +184,24 @@ function SettingsGroup({
 
   return (
     <section aria-labelledby={`settings-${title.toLowerCase()}`} className="space-y-3">
-      <h2 id={`settings-${title.toLowerCase()}`} className="text-sm font-semibold text-slate-700">
+      <h2 id={`settings-${title.toLowerCase()}`} className="text-sm font-semibold text-slate-800">
         {title}
       </h2>
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="divide-y divide-slate-100">
-          {entries.map((entry) => (
-            <SettingRow
-              key={entry.key}
-              entry={entry}
-              value={draft[entry.key] ?? entry.value}
-              isOwner={isOwner}
-              onChange={onChange}
-            />
-          ))}
-        </div>
+      <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-xs">
+        {entries.map((entry) => (
+          <SettingRow
+            key={entry.key}
+            entry={entry}
+            value={draft[entry.key] ?? entry.value}
+            isOwner={isOwner}
+            onChange={onChange}
+          />
+        ))}
       </div>
     </section>
   )
 }
 
-/**
- * One setting.
- *
- * @param props the entry, the value and the change handler
- * @returns the row element
- */
 function SettingRow({
   entry,
   value,
@@ -265,10 +213,10 @@ function SettingRow({
   isOwner: boolean
   onChange: (key: string, value: string) => void
 }) {
-  const inputId = `setting-${entry.key.replace('.', '-')}`
+  const inputId = `setting-${entry.key.replaceAll('.', '-')}`
 
   return (
-    <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="sm:mr-6">
         <label htmlFor={inputId} className="block text-sm font-medium text-slate-800">
           {entry.label}
@@ -288,12 +236,6 @@ function SettingRow({
   )
 }
 
-/**
- * The input of one setting, chosen by the type of the value.
- *
- * @param props the entry, the value and the change handler
- * @returns the input element
- */
 function SettingInput({
   id,
   entry,
@@ -308,92 +250,66 @@ function SettingInput({
   onChange: (value: string) => void
 }) {
   const editable = isOwner && !entry.readOnly
-  const className =
-    'w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100 disabled:bg-slate-50 disabled:text-slate-500'
 
   if (entry.type === 'BOOLEAN') {
     return (
-      <select
+      <Select
         id={id}
         value={value === 'true' ? 'true' : 'false'}
         disabled={!editable}
         onChange={(event) => onChange(event.target.value)}
-        className={className}
       >
         <option value="false">No</option>
         <option value="true">Yes</option>
-      </select>
+      </Select>
     )
   }
 
   if (entry.type === 'PAPER_WIDTH') {
     return (
-      <select
+      <Select
         id={id}
         value={value}
         disabled={!editable}
         onChange={(event) => onChange(event.target.value)}
-        className={className}
       >
         <option value="58">58 mm</option>
         <option value="80">80 mm</option>
-      </select>
+      </Select>
     )
   }
 
   return (
-    <input
+    <Input
       id={id}
       type={entry.type === 'TEXT' ? 'text' : 'number'}
       step={entry.type === 'AMOUNT' ? '0.01' : 'any'}
       value={value}
       disabled={!editable}
       onChange={(event) => onChange(event.target.value)}
-      className={className}
     />
   )
 }
 
-/**
- * Flattens the groups of settings into one map of key and value.
- *
- * @param groups the groups, may be undefined
- * @returns the values
- */
 function flattenGroups(groups: SettingsGroups | undefined): Record<string, string> {
   const values: Record<string, string> = {}
   if (!groups) {
     return values
   }
   for (const group of GROUP_ORDER) {
-    for (const entry of groups[group]) {
+    for (const entry of groups[group] ?? []) {
       values[entry.key] = entry.value
     }
   }
   return values
 }
 
-/**
- * Builds the key of the form from the saved values.
- *
- * The form is rebuilt when the server sends different values, and it keeps the draft of the user
- * while nothing changed on the server.
- *
- * @param groups the groups, may be undefined
- * @returns the key
- */
 function savedValuesKey(groups: SettingsGroups | undefined): string {
   return Object.entries(flattenGroups(groups))
     .map(([key, value]) => `${key}=${value}`)
     .join('|')
 }
 
-/**
- * Turns any failure into one sentence the user can act on.
- *
- * @param caught the thrown value
- * @returns the message to show
- */
 function readError(caught: unknown): string {
   if (caught instanceof ApiError) {
     return caught.message

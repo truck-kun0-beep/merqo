@@ -8,32 +8,39 @@ import {
   fetchUsers,
   resetUserPassword,
 } from '../api/business'
-import { ApiError } from '../api/types'
+import type { UserSummary } from '../api/models'
 import { useSession } from '../session/sessionContext'
-import { formatDateTime } from '../lib/format'
+import {
+  Badge,
+  Button,
+  DataTable,
+  DateText,
+  ErrorState,
+  FormField,
+  Input,
+  Modal,
+  PageHeader,
+  Select,
+  StatusPill,
+  type DataTableColumn,
+} from '../components/ui'
 
 /**
- * The people screen.
- *
- * It shows the accounts the signed in user may see. The backend scopes the
- * list, so a manager sees the staff of their own branches and the owner sees
- * everybody.
- *
- * Every account links to the screen that shows what it may do, so the owner can
- * change the templates, the overrides, the delegation list and the assignments.
- *
- * @returns the people screen element
+ * The people screen showing scoped staff accounts.
  */
 export default function UsersPage() {
   const { user } = useSession()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
+  const [page, setPage] = useState(0)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createdPassword, setCreatedPassword] = useState<string | undefined>(undefined)
   const isOwner = user?.accountType === 'OWNER'
 
   const query = useQuery({
-    queryKey: ['users', appliedSearch],
-    queryFn: () => fetchUsers({ q: appliedSearch || undefined, size: 50 }),
+    queryKey: ['users', appliedSearch, page],
+    queryFn: () => fetchUsers({ q: appliedSearch || undefined, page, size: 25 }),
   })
 
   const deactivateMutation = useMutation({
@@ -53,212 +60,213 @@ export default function UsersPage() {
 
   const users = query.data?.items ?? []
 
+  const columns: DataTableColumn<UserSummary>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortable: true,
+      sortValue: (row) => row.fullName,
+      render: (account) => (
+        <div className="font-medium text-slate-900">
+          <span>{account.fullName}</span>
+          {account.id === user?.id ? (
+            <Badge tone="primary" className="ml-2">
+              You
+            </Badge>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: 'username',
+      header: 'Username',
+      sortable: true,
+      sortValue: (row) => row.username,
+      render: (account) => <span className="text-slate-600">{account.username}</span>,
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      sortable: true,
+      sortValue: (row) => row.accountType,
+      render: (account) => (
+        <Badge tone={account.accountType === 'OWNER' ? 'primary' : 'neutral'}>
+          {account.accountType === 'OWNER'
+            ? 'Owner'
+            : account.accountType === 'MANAGER'
+              ? 'Manager'
+              : 'Staff'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'employeeCode',
+      header: 'Staff no.',
+      render: (account) => (
+        <span className="font-mono text-xs text-slate-500">{account.employeeCode ?? '-'}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (account) => (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusPill status={account.isActive ? 'ACTIVE' : 'INACTIVE'} />
+          {account.isDemo ? <Badge tone="primary">Demo</Badge> : null}
+        </div>
+      ),
+    },
+    {
+      key: 'lastLoginAt',
+      header: 'Last sign in',
+      render: (account) => (
+        <span className="text-xs text-slate-500">
+          <DateText value={account.lastLoginAt} withTime fallback="Never" />
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Access',
+      render: (account) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to={`/users/${account.id}`}
+            className="text-xs font-semibold text-merqo-700 hover:underline"
+          >
+            Open
+          </Link>
+          {account.accountType !== 'OWNER' ? (
+            account.isActive ? (
+              <button
+                type="button"
+                onClick={() => deactivateMutation.mutate(account.id)}
+                className="text-xs font-medium text-rose-700 hover:underline"
+              >
+                Deactivate
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => activateMutation.mutate(account.id)}
+                className="text-xs font-medium text-emerald-700 hover:underline"
+              >
+                Activate
+              </button>
+            )
+          ) : null}
+          {account.accountType !== 'OWNER' ? (
+            <button
+              type="button"
+              onClick={() => resetMutation.mutate(account.id)}
+              className="text-xs font-medium text-slate-600 hover:underline"
+            >
+              Reset password
+            </button>
+          ) : null}
+        </div>
+      ),
+    },
+  ]
+
+  const actionError = deactivateMutation.error ?? activateMutation.error ?? resetMutation.error
+  const tempPassword = resetMutation.data?.temporaryPassword ?? createdPassword
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">People</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Every account of Merqo that you are allowed to see.
-        </p>
-      </div>
+      <PageHeader
+        title="People"
+        description="Staff and manager accounts within your branch scope."
+        actions={isOwner ? <Button onClick={() => setCreateOpen(true)}>Add an account</Button> : undefined}
+      />
 
       <form
-        className="flex gap-2"
+        className="flex flex-wrap items-center gap-2"
         onSubmit={(event) => {
           event.preventDefault()
+          setPage(0)
           setAppliedSearch(search.trim())
         }}
       >
         <label htmlFor="user-search" className="sr-only">
           Search by name, username or staff number
         </label>
-        <input
+        <Input
           id="user-search"
           type="search"
           value={search}
           placeholder="Search by name, username or staff number"
           onChange={(event) => setSearch(event.target.value)}
-          className="w-full max-w-sm rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
+          className="max-w-sm"
         />
-        <button
-          type="submit"
-          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
-        >
+        <Button type="submit" variant="outline">
           Search
-        </button>
+        </Button>
       </form>
 
-      {isOwner ? <CreateUserForm /> : null}
-
-      {query.isPending ? (
+      {tempPassword ? (
         <div
           role="status"
-          className="rounded-xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-600"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
         >
-          Loading the accounts...
+          Temporary password: <code className="font-mono font-semibold">{tempPassword}</code>. It
+          is shown once and the account must change it at the next sign in.
         </div>
       ) : null}
+
+      {actionError ? <ErrorState title="Action failed" error={actionError} /> : null}
 
       {query.error ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-6 text-sm text-rose-800"
-        >
-          <p className="font-medium">The accounts could not be loaded.</p>
-          <p className="mt-1">{query.error.message}</p>
-        </div>
-      ) : null}
+        <ErrorState
+          title="The accounts could not be loaded."
+          error={query.error}
+          onRetry={() => query.refetch()}
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={users}
+          getRowKey={(row) => row.id}
+          isLoading={query.isPending}
+          emptyTitle="No accounts found"
+          emptyDescription="No account matches this search."
+          pagination={
+            query.data
+              ? {
+                  page: query.data.page,
+                  totalPages: query.data.totalPages,
+                  totalItems: query.data.totalItems,
+                  pageSize: query.data.size,
+                  onPageChange: setPage,
+                }
+              : undefined
+          }
+        />
+      )}
 
-      {query.isSuccess && users.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-600">
-          No account matches this search.
-        </div>
-      ) : null}
-
-      {users.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs tracking-wide text-slate-500 uppercase">
-              <tr>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Name
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Username
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Role
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Staff no.
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Status
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Last sign in
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Access
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map((account) => (
-                <tr key={account.id}>
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {account.fullName}
-                    {account.id === user?.id ? (
-                      <span className="ml-2 text-xs font-normal text-merqo-700">(you)</span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{account.username}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {account.accountType === 'OWNER'
-                      ? 'Owner'
-                      : account.accountType === 'MANAGER'
-                        ? 'Manager'
-                        : 'Staff'}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                    {account.employeeCode ?? '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={[
-                        'rounded-full px-2 py-0.5 text-xs font-medium',
-                        account.isActive
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-slate-100 text-slate-500',
-                      ].join(' ')}
-                    >
-                      {account.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                    {account.isDemo ? (
-                      <span className="ml-1 rounded-full bg-merqo-50 px-2 py-0.5 text-xs font-medium text-merqo-700">
-                        Demo
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    {account.lastLoginAt ? formatDateTime(account.lastLoginAt) : 'Never'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Link
-                        to={`/users/${account.id}`}
-                        className="text-xs font-medium text-merqo-700 hover:underline"
-                      >
-                        Open
-                      </Link>
-                      {account.accountType !== 'OWNER' ? (
-                        account.isActive ? (
-                          <button
-                            type="button"
-                            onClick={() => deactivateMutation.mutate(account.id)}
-                            className="text-xs font-medium text-rose-700 hover:underline"
-                          >
-                            Deactivate
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => activateMutation.mutate(account.id)}
-                            className="text-xs font-medium text-emerald-700 hover:underline"
-                          >
-                            Activate
-                          </button>
-                        )
-                      ) : null}
-                      {account.accountType !== 'OWNER' ? (
-                        <button
-                          type="button"
-                          onClick={() => resetMutation.mutate(account.id)}
-                          className="text-xs font-medium text-slate-600 hover:underline"
-                        >
-                          Reset the password
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
-      {deactivateMutation.error || activateMutation.error || resetMutation.error ? (
-        <p role="alert" className="text-sm text-rose-700">
-          {readError(deactivateMutation.error ?? activateMutation.error ?? resetMutation.error)}
-        </p>
-      ) : null}
-
-      {resetMutation.data?.temporaryPassword ? (
-        <p role="status" className="text-sm text-emerald-700">
-          The temporary password is{' '}
-          <span className="font-mono">{resetMutation.data.temporaryPassword}</span>. It is shown
-          once and the account has to change it at the next sign in.
-        </p>
-      ) : null}
-
-      {query.data ? (
-        <p className="text-xs text-slate-500">
-          Showing {query.data.items.length} of {query.data.totalItems} accounts.
-        </p>
-      ) : null}
+      <CreateUserModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(temporaryPassword) => {
+          if (temporaryPassword) {
+            setCreatedPassword(temporaryPassword)
+          }
+        }}
+      />
     </div>
   )
 }
 
-/**
- * The form that creates an account.
- *
- * @returns the form element
- */
-function CreateUserForm() {
+function CreateUserModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreated: (temporaryPassword?: string) => void
+}) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
   const [username, setUsername] = useState('')
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -272,126 +280,66 @@ function CreateUserForm() {
         email: email.trim() || undefined,
         accountType,
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       setUsername('')
       setFullName('')
       setEmail('')
-      setOpen(false)
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      onCreated(created.temporaryPassword)
+      onClose()
     },
   })
 
-  if (!open) {
-    return (
-      <div>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800"
-        >
-          Add an account
-        </button>
-      </div>
-    )
-  }
-
   return (
-    <form
-      className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-      onSubmit={(event) => {
-        event.preventDefault()
-        mutation.mutate()
-      }}
-    >
-      <h2 className="text-sm font-semibold text-slate-700">New account</h2>
+    <Modal open={open} onClose={onClose} title="New account">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          mutation.mutate()
+        }}
+        className="space-y-4"
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField label="Username" required>
+            <Input value={username} onChange={(e) => setUsername(e.target.value)} required />
+          </FormField>
+          <FormField label="Full name">
+            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </FormField>
+          <FormField label="Email">
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </FormField>
+          <FormField label="Kind">
+            <Select
+              value={accountType}
+              onChange={(e) => setAccountType(e.target.value as 'MANAGER' | 'STAFF')}
+            >
+              <option value="STAFF">Staff</option>
+              <option value="MANAGER">Manager</option>
+            </Select>
+          </FormField>
+        </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm text-slate-700">
-          <span className="block text-xs font-medium text-slate-500">Username</span>
-          <input
-            type="text"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-          />
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="block text-xs font-medium text-slate-500">Full name</span>
-          <input
-            type="text"
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-          />
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="block text-xs font-medium text-slate-500">Email</span>
-          <input
-            type="text"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-          />
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="block text-xs font-medium text-slate-500">Kind</span>
-          <select
-            value={accountType}
-            onChange={(event) => setAccountType(event.target.value as 'MANAGER' | 'STAFF')}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+        <p className="text-xs text-slate-500">
+          The server generates a temporary password that the user must change at first sign in.
+        </p>
+
+        {mutation.isError ? <ErrorState title="Could not create account" error={mutation.error} /> : null}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
+            disabled={!username.trim()}
           >
-            <option value="STAFF">Staff</option>
-            <option value="MANAGER">Manager</option>
-          </select>
-        </label>
-      </div>
-
-      <p className="text-xs text-slate-500">
-        The backend writes a temporary password and the account has to change it at the first sign
-        in.
-      </p>
-
-      {mutation.isError ? (
-        <p role="alert" className="text-sm text-rose-700">
-          {readError(mutation.error)}
-        </p>
-      ) : null}
-      {mutation.data?.temporaryPassword ? (
-        <p role="status" className="text-sm text-emerald-700">
-          The temporary password is{' '}
-          <span className="font-mono">{mutation.data.temporaryPassword}</span>. It is shown once.
-        </p>
-      ) : null}
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={mutation.isPending || !username.trim()}
-          className="rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:opacity-60"
-        >
-          {mutation.isPending ? 'Saving...' : 'Create the account'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+            Create the account
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
-}
-
-/**
- * Turns any failure into one sentence the user can act on.
- *
- * @param caught the thrown value
- * @returns the message to show
- */
-function readError(caught: unknown): string {
-  if (caught instanceof ApiError) {
-    return caught.message
-  }
-  return 'Something went wrong. Try again.'
 }

@@ -46,14 +46,16 @@ export function FormField({
 
   return (
     <div className={`space-y-1.5 ${className}`}>
-      <label htmlFor={controlId} className="block text-sm font-medium text-slate-700">
-        {label}
+      <div className="flex items-center gap-1">
+        <label htmlFor={controlId} className="block text-sm font-medium text-slate-700">
+          {label}
+        </label>
         {required ? (
-          <span aria-hidden="true" className="ml-0.5 text-rose-600">
+          <span aria-hidden="true" className="text-xs font-medium text-rose-600">
             *
           </span>
         ) : null}
-      </label>
+      </div>
       <div>{enhancedChild}</div>
       {hint ? (
         <p id={hintId} className="text-xs text-slate-500">

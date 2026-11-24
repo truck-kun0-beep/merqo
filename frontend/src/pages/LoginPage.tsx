@@ -5,18 +5,13 @@ import { fetchAuthStatus, fetchDemoAccounts } from '../api/auth'
 import { ApiError, BackendUnreachableError } from '../api/types'
 import { useSession } from '../session/sessionContext'
 import ServerWakingUp from '../components/ServerWakingUp'
+import { Badge, Button, FormField, Input, Skeleton } from '../components/ui'
 
 /**
  * The login page.
  *
- * Three ways in:
- *
- * 1. A username (or email address) and a password.
- * 2. One click on a demo account, when demo mode is on.
- * 3. Nothing else. There is no "forgot password" link and no public setup
- *    page, because either of them would let a stranger take the system over.
- *
- * @returns the login page element
+ * Supports username/email + password login and, when demo mode is enabled,
+ * one-click demo account cards.
  */
 export default function LoginPage() {
   const { signIn, signInAsDemo } = useSession()
@@ -27,7 +22,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [pendingDemoKey, setPendingDemoKey] = useState<string | undefined>(undefined)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | undefined>(undefined)
+  const [error, setError] = useState<{ message: string; correlationId?: string } | undefined>(
+    undefined,
+  )
 
   const statusQuery = useQuery({ queryKey: ['auth', 'status'], queryFn: fetchAuthStatus })
   const demoQuery = useQuery({
@@ -40,21 +37,12 @@ export default function LoginPage() {
   const businessName = statusQuery.data?.businessName || 'Merqo'
   const setupRequired = statusQuery.data?.setupRequired === true
 
-  /** The page the user wanted before the login page sent them here. */
   const from = (location.state as { from?: string } | null)?.from ?? '/'
 
-  /**
-   * Sends the user to the overview after a successful sign in.
-   */
   const goToApp = () => {
     navigate(from, { replace: true })
   }
 
-  /**
-   * Signs a user in with the form.
-   *
-   * @param event the submit event
-   */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(undefined)
@@ -69,11 +57,6 @@ export default function LoginPage() {
     }
   }
 
-  /**
-   * Signs a demo account in with one click.
-   *
-   * @param accountKey the key of the demo account
-   */
   async function handleDemoLogin(accountKey: string) {
     setError(undefined)
     setPendingDemoKey(accountKey)
@@ -96,147 +79,166 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-6 py-8">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{businessName}</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Sign in to run the shop. Merqo keeps you in one branch or in the whole business, depending
-          on your account.
-        </p>
-      </div>
-
-      {setupRequired ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-        >
-          <p className="font-medium">This system has no owner yet.</p>
-          <p className="mt-1">
-            Set <code className="font-mono">INITIAL_OWNER_USERNAME</code> and{' '}
-            <code className="font-mono">INITIAL_OWNER_PASSWORD</code> on the server and restart it.
-            There is deliberately no public setup page.
+    <div className="flex min-h-full items-center justify-center bg-slate-50 px-4 py-10">
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center">
+          <div className="mx-auto mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-merqo-700 text-base font-bold text-white shadow-sm">
+            {businessName.slice(0, 1).toUpperCase()}
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{businessName}</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Sign in with your staff credentials to continue.
           </p>
         </div>
-      ) : null}
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-      >
-        <div>
-          <label htmlFor="identifier" className="block text-sm font-medium text-slate-700">
-            Username or email
-          </label>
-          <input
-            id="identifier"
-            name="identifier"
-            type="text"
-            autoComplete="username"
-            required
-            value={identifier}
-            onChange={(event) => setIdentifier(event.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-            Password
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-          />
-        </div>
-
-        {error ? (
-          <p role="alert" className="text-sm text-rose-700">
-            {error}
-          </p>
+        {setupRequired ? (
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            <p className="font-semibold">This system has no owner yet.</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              Set <code className="font-mono">INITIAL_OWNER_USERNAME</code> and{' '}
+              <code className="font-mono">INITIAL_OWNER_PASSWORD</code> on the server and restart
+              it. There is deliberately no public setup page.
+            </p>
+          </div>
         ) : null}
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:cursor-not-allowed disabled:opacity-60"
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
         >
-          {isSubmitting ? 'Signing in...' : 'Sign in'}
-        </button>
-      </form>
+          <FormField label="Username or email" htmlFor="identifier" required>
+            <Input
+              id="identifier"
+              name="identifier"
+              type="text"
+              autoComplete="username"
+              required
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+            />
+          </FormField>
 
-      {demoMode ? (
-        <section
-          aria-labelledby="demo-heading"
-          className="rounded-xl border border-merqo-200 bg-merqo-50 p-5"
-        >
-          <h2 id="demo-heading" className="text-sm font-semibold text-merqo-900">
-            Demo accounts
-          </h2>
-          <p className="mt-1 text-xs text-merqo-800">
-            One click signs you in. Every account shows a different scope.
-          </p>
+          <FormField label="Password" htmlFor="password" required>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </FormField>
 
-          {demoQuery.isPending ? (
-            <p className="mt-3 text-sm text-merqo-800">Loading the demo accounts...</p>
+          {error ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-800"
+            >
+              <p>{error.message}</p>
+              {error.correlationId && error.correlationId !== 'unknown' ? (
+                <p className="mt-0.5 text-xs text-rose-700/80">
+                  Reference ID: <code className="font-mono">{error.correlationId}</code>
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
-          {demoQuery.error ? (
-            <p role="alert" className="mt-3 text-sm text-rose-700">
-              {readError(demoQuery.error)}
+          <Button
+            type="submit"
+            isLoading={isSubmitting}
+            loadingText="Signing in..."
+            className="w-full"
+            size="lg"
+          >
+            Sign in
+          </Button>
+        </form>
+
+        {demoMode ? (
+          <section
+            aria-labelledby="demo-heading"
+            className="rounded-xl border border-merqo-200 bg-merqo-50/70 p-5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="demo-heading" className="text-sm font-semibold text-merqo-950">
+                Demo accounts
+              </h2>
+              <Badge tone="warning">One-click sign in</Badge>
+            </div>
+            <p className="mt-1 text-xs text-merqo-900/80">
+              Select an account below to explore its branch scope and permissions.
             </p>
-          ) : null}
 
-          <ul className="mt-3 space-y-2">
-            {(demoQuery.data ?? []).map((account) => (
-              <li key={account.accountKey}>
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin(account.accountKey)}
-                  disabled={pendingDemoKey !== undefined}
-                  className="w-full rounded-lg border border-merqo-200 bg-white px-4 py-3 text-left transition-colors hover:border-merqo-400 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <span className="block text-sm font-semibold text-slate-900">
-                    {pendingDemoKey === account.accountKey ? 'Signing in...' : account.displayName}
-                  </span>
-                  <span className="block text-xs text-slate-600">{account.role}</span>
-                  <span className="mt-0.5 block text-xs text-slate-500">{account.description}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+            {demoQuery.isPending ? (
+              <div className="mt-3 space-y-2">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+            ) : null}
+
+            {demoQuery.error ? (
+              <p role="alert" className="mt-3 text-sm text-rose-700">
+                {readError(demoQuery.error).message}
+              </p>
+            ) : null}
+
+            <ul className="mt-3 space-y-2">
+              {(demoQuery.data ?? []).map((account) => {
+                const isPendingThis = pendingDemoKey === account.accountKey
+                return (
+                  <li key={account.accountKey}>
+                    <button
+                      type="button"
+                      onClick={() => handleDemoLogin(account.accountKey)}
+                      disabled={pendingDemoKey !== undefined}
+                      className="group w-full rounded-lg border border-merqo-200 bg-white px-4 py-3 text-left shadow-xs transition-all hover:border-merqo-500 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-merqo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-900 group-hover:text-merqo-800">
+                          {isPendingThis ? 'Signing in...' : account.displayName}
+                        </span>
+                        <Badge tone="primary">{account.role}</Badge>
+                      </div>
+                      <span className="mt-1 block text-xs text-slate-600">
+                        {account.description}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        ) : null}
+      </div>
     </div>
   )
 }
 
-/**
- * Turns any failure into one sentence the user can act on.
- *
- * @param caught the thrown value
- * @returns the message to show
- */
-function readError(caught: unknown): string {
+function readError(caught: unknown): { message: string; correlationId?: string } {
   if (caught instanceof ApiError) {
     if (caught.errorCode === 'INVALID_CREDENTIALS') {
-      return 'Invalid username or password.'
+      return { message: 'Invalid username or password.', correlationId: caught.correlationId }
     }
     if (caught.errorCode === 'ACCOUNT_LOCKED') {
-      return 'This account is locked. Try again later.'
+      return {
+        message: 'This account is locked. Try again later.',
+        correlationId: caught.correlationId,
+      }
     }
     if (caught.errorCode === 'TOO_MANY_REQUESTS') {
-      return 'Too many attempts. Wait a moment and try again.'
+      return {
+        message: 'Too many attempts. Wait a moment and try again.',
+        correlationId: caught.correlationId,
+      }
     }
-    return caught.message
+    return { message: caught.message, correlationId: caught.correlationId }
   }
   if (caught instanceof BackendUnreachableError) {
-    return 'The server could not be reached. It may still be waking up.'
+    return { message: 'The server could not be reached. It may still be waking up.' }
   }
-  return 'Something went wrong. Try again.'
+  return { message: 'Something went wrong. Try again.' }
 }

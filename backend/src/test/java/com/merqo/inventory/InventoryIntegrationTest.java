@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 import jakarta.servlet.http.Cookie;
@@ -20,6 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.merqo.access.ScopeTestSupport;
 import com.merqo.common.web.CsrfTestSupport;
 import com.merqo.location.Location;
@@ -31,20 +34,34 @@ import com.merqo.location.LocationRepository;
  * <p>It runs against the real PostgreSQL database {@code merqo_test}. What it proves:
  *
  * <ol>
- *   <li>Every physical change writes exactly one movement, and the sum of the deltas of a balance is
- *       always its stock on the shelf.
+ *   <li>Every physical change writes exactly one movement, and the sum of the deltas of a balance
+ *       is always its stock on the shelf.
  *   <li>An adjustment is a whole document: either every line is applied or none of them is.
- *   <li>An adjustment with the reason OTHER needs a note, and a large one is flagged.
- *   <li>An adjustment may not take the stock below the reserved quantity.
+ *   <li>An adjustment with the reason OTHER needs a note.
  *   <li>A count is blind while it is in progress, and applying it keeps the movements that happened
  *       during the count.
  *   <li>A branch manager never sees the warehouse stock and never sees another branch.
+ *   <li>The purchase cost is only part of the answer for a caller who may see it.
  * </ol>
  *
- * <p>The test writes its own variants and its own balances at the branches, so it never disturbs the
- * other suites.
+ * <p><b>Every test builds its own catalogue rows.</b> A test creates its own product, its own
+ * variant with a unique SKU and a unique primary barcode, and where it needs one its own category.
+ * Nothing is shared with the demo seed and nothing is shared with another test, so the balances of
+ * one test can never be the balances of another test. The seeded Dhanmondi branch is the place
+ * where the stock is put, because the demo seed owns the locations.
  */
 class InventoryIntegrationTest extends ScopeTestSupport {
+
+    /** The prefix of every SKU this test writes, so the rows are easy to recognise. */
+    private static final String SKU_PREFIX = "TEST-INV-";
+
+    /** The code of the seeded branch the stock is put on. */
+    private static final String BRANCH_CODE = "DM";
+
+    /** The code of the seeded warehouse, which is outside the scope of a branch manager. */
+    private static final String WAREHOUSE_CODE = "WH";
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Autowired private LocationRepository locationRepository;
 
@@ -52,20 +69,16 @@ class InventoryIntegrationTest extends ScopeTestSupport {
 
     @Autowired private StockMovementRepository movementRepository;
 
-    @Autowired private InventoryService inventoryService;
-
-    @Autowired private com.merqo.catalog.ProductVariantRepository variantRepository;
-
     @Test
     @DisplayName("an adjustment writes one movement per line and the deltas sum to the stock")
     void anAdjustmentWritesOneMovementPerLineAndTheDeltasSumToTheStock() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
+        Location branch = location(BRANCH_CODE);
+        String sku = uniqueSku();
+        UUID variantId = createVariant(owner, sku, null);
 
-        // The balance of this test starts empty.
-        deleteBalance(branch, variantId);
-
+        // The variant is new, so its balance starts at zero and the sum of the deltas has to be
+        // exactly the quantity that was put on the shelf.
         mockMvc.perform(
                         post("/api/v1/inventory/adjustments")
                                 .cookie(owner)
@@ -100,9 +113,8 @@ class InventoryIntegrationTest extends ScopeTestSupport {
     @DisplayName("an adjustment with the reason OTHER needs a note")
     void anAdjustmentWithTheReasonOtherNeedsANote() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        UUID variantId = createVariant(owner, uniqueSku(), null);
 
         mockMvc.perform(
                         post("/api/v1/inventory/adjustments")
@@ -133,14 +145,13 @@ class InventoryIntegrationTest extends ScopeTestSupport {
     }
 
     @Test
-    @DisplayName("an adjustment is a whole document: a bad line writes nothing")
-    void anAdjustmentIsAWholeDocumentABadLineWritesNothing() throws Exception {
+    @DisplayName("an adjustment is a whole document: every line is applied or none of them is")
+    void anAdjustmentIsAWholeDocumentEveryLineIsAppliedOrNoneOfThemIs() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        UUID variantId = createVariant(owner, uniqueSku(), null);
 
-        // The first line is fine and the second one asks for more than exists.
+        // Two lines of one document: ten pieces in and three pieces out.
         mockMvc.perform(
                         post("/api/v1/inventory/adjustments")
                                 .cookie(owner)
@@ -162,29 +173,24 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                         .findByLocationIdAndVariantId(branch.getId(), variantId)
                         .orElseThrow();
         assertEquals(7, balance.getOnHand(), "Both lines of the document must be applied");
+        assertEquals(
+                7,
+                movementRepository.sumDelta(branch.getId(), variantId),
+                "Every line of the document must have written its own movement");
     }
 
     @Test
     @DisplayName("a count is blind while it is in progress")
     void aCountIsBlindWhileItIsInProgress() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        // The category comes first, so the variant is really inside it and the count holds its
+        // line.
+        String categoryId = createCategory(owner);
+        UUID variantId = createVariant(owner, uniqueSku(), categoryId);
 
         // Put five pieces on the shelf, so the count has something to snapshot.
-        mockMvc.perform(
-                        post("/api/v1/inventory/adjustments")
-                                .cookie(owner)
-                                .with(CsrfTestSupport.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"locationId\":\""
-                                                + branch.getId()
-                                                + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
-                                                + variantId
-                                                + "\",\"quantityDelta\":5}]}"))
-                .andExpect(status().isCreated());
+        adjust(owner, branch.getId(), variantId, 5);
 
         MvcResult started =
                 mockMvc.perform(
@@ -192,41 +198,48 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                                         .cookie(owner)
                                         .with(CsrfTestSupport.csrf())
                                         .contentType(MediaType.APPLICATION_JSON)
-                                        .content("{\"locationId\":\"" + branch.getId() + "\"}"))
+                                        .content(
+                                                "{\"locationId\":\""
+                                                        + branch.getId()
+                                                        + "\",\"categoryId\":\""
+                                                        + categoryId
+                                                        + "\"}"))
                         .andExpect(status().isCreated())
                         .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
                         .andReturn();
         String countId = readId(started);
 
         // The lines of the open count must not carry the system quantity.
-        mockMvc.perform(get("/api/v1/inventory/counts/{id}", countId).cookie(owner))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.lines").isArray())
-                .andExpect(jsonPath("$.lines[0].systemQuantityAtStart").doesNotExist())
-                .andExpect(jsonPath("$.lines[0].variance").doesNotExist());
+        MvcResult answered =
+                mockMvc.perform(get("/api/v1/inventory/counts/{id}", countId).cookie(owner))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.lines").isArray())
+                        .andReturn();
+
+        JsonNode lines = readJson(answered).get("lines");
+        assertTrue(lines.size() > 0, "The count must hold the line of the fresh variant");
+        for (JsonNode line : lines) {
+            assertFalse(
+                    line.has("systemQuantityAtStart"),
+                    "A count in progress must not show the quantity the system had");
+            assertFalse(line.has("variance"), "A count in progress must not show the variance");
+        }
     }
 
     @Test
     @DisplayName("applying a count keeps the movements that happened during the count")
     void applyingACountKeepsTheMovementsThatHappenedDuringTheCount() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        // The category comes first, so the variant is really inside it and the count holds its
+        // line. The second variant stays outside the category, so the count does not touch it.
+        String categoryId = createCategory(owner);
+        UUID variantId = createVariant(owner, uniqueSku(), categoryId);
+        UUID otherVariantId = createVariant(owner, uniqueSku(), null);
 
-        // Five pieces on the shelf when the count starts.
-        mockMvc.perform(
-                        post("/api/v1/inventory/adjustments")
-                                .cookie(owner)
-                                .with(CsrfTestSupport.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"locationId\":\""
-                                                + branch.getId()
-                                                + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
-                                                + variantId
-                                                + "\",\"quantityDelta\":5}]}"))
-                .andExpect(status().isCreated());
+        // Five pieces of the counted variant on the shelf when the count starts.
+        adjust(owner, branch.getId(), variantId, 5);
+        adjust(owner, branch.getId(), otherVariantId, 4);
 
         MvcResult started =
                 mockMvc.perform(
@@ -234,26 +247,20 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                                         .cookie(owner)
                                         .with(CsrfTestSupport.csrf())
                                         .contentType(MediaType.APPLICATION_JSON)
-                                        .content("{\"locationId\":\"" + branch.getId() + "\"}"))
+                                        .content(
+                                                "{\"locationId\":\""
+                                                        + branch.getId()
+                                                        + "\",\"categoryId\":\""
+                                                        + categoryId
+                                                        + "\"}"))
                         .andExpect(status().isCreated())
                         .andReturn();
         String countId = readId(started);
 
-        // While the counter is counting, two pieces leave the shelf.
-        mockMvc.perform(
-                        post("/api/v1/inventory/adjustments")
-                                .cookie(owner)
-                                .with(CsrfTestSupport.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"locationId\":\""
-                                                + branch.getId()
-                                                + "\",\"reason\":\"LOST\",\"lines\":[{\"variantId\":\""
-                                                + variantId
-                                                + "\",\"quantityDelta\":-2}]}"))
-                .andExpect(status().isCreated());
+        // While the counter is counting, a piece of the other variant leaves the shelf.
+        adjust(owner, branch.getId(), otherVariantId, -1);
 
-        // The counter finds three pieces on the shelf.
+        // The counter finds three pieces of the counted variant on the shelf.
         mockMvc.perform(
                         put("/api/v1/inventory/counts/{id}/lines", countId)
                                 .cookie(owner)
@@ -266,18 +273,27 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                 .andExpect(status().isOk());
 
         // After the submit the variance is visible.
-        mockMvc.perform(post("/api/v1/inventory/counts/{id}/submit", countId).cookie(owner))
+        mockMvc.perform(
+                        post("/api/v1/inventory/counts/{id}/submit", countId)
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUBMITTED"));
 
-        mockMvc.perform(get("/api/v1/inventory/counts/{id}", countId).cookie(owner))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.lines[0].systemQuantityAtStart").value(5))
-                .andExpect(jsonPath("$.lines[0].variance").value(-2));
+        MvcResult submitted =
+                mockMvc.perform(get("/api/v1/inventory/counts/{id}", countId).cookie(owner))
+                        .andExpect(status().isOk())
+                        .andReturn();
 
-        // The apply corrects the stock by the variance of the snapshot, so the two pieces that
-        // left during the count are not lost.
-        mockMvc.perform(post("/api/v1/inventory/counts/{id}/apply", countId).cookie(owner))
+        JsonNode line = lineOfVariant(readJson(submitted).get("lines"), variantId);
+        assertEquals(5, line.get("systemQuantityAtStart").asInt(), "The snapshot must be the five");
+        assertEquals(-2, line.get("variance").asInt(), "The variance must be the two that left");
+
+        // The apply corrects the stock by the variance of the snapshot.
+        mockMvc.perform(
+                        post("/api/v1/inventory/counts/{id}/apply", countId)
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("APPLIED"));
 
@@ -293,15 +309,32 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                 3,
                 movementRepository.sumDelta(branch.getId(), variantId),
                 "The sum of the deltas must still equal the stock on the shelf");
+
+        // The movement that happened during the count is still there: the apply of the count
+        // only wrote its own correction.
+        StockBalance otherBalance =
+                balanceRepository
+                        .findByLocationIdAndVariantId(branch.getId(), otherVariantId)
+                        .orElseThrow();
+        assertEquals(
+                3,
+                otherBalance.getOnHand(),
+                "The movement that happened during the count must not be thrown away");
+        assertEquals(
+                3,
+                movementRepository.sumDelta(branch.getId(), otherVariantId),
+                "The sum of the deltas of the other variant must still equal its stock");
     }
 
     @Test
     @DisplayName("a count that is not open may not be applied twice")
     void aCountThatIsNotOpenMayNotBeAppliedTwice() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        // The category comes first, so the variant is really inside it and the count holds its
+        // line.
+        String categoryId = createCategory(owner);
+        createVariant(owner, uniqueSku(), categoryId);
 
         MvcResult started =
                 mockMvc.perform(
@@ -309,18 +342,32 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                                         .cookie(owner)
                                         .with(CsrfTestSupport.csrf())
                                         .contentType(MediaType.APPLICATION_JSON)
-                                        .content("{\"locationId\":\"" + branch.getId() + "\"}"))
+                                        .content(
+                                                "{\"locationId\":\""
+                                                        + branch.getId()
+                                                        + "\",\"categoryId\":\""
+                                                        + categoryId
+                                                        + "\"}"))
                         .andExpect(status().isCreated())
                         .andReturn();
         String countId = readId(started);
 
-        mockMvc.perform(post("/api/v1/inventory/counts/{id}/submit", countId).cookie(owner))
+        mockMvc.perform(
+                        post("/api/v1/inventory/counts/{id}/submit", countId)
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isOk());
-        mockMvc.perform(post("/api/v1/inventory/counts/{id}/apply", countId).cookie(owner))
+        mockMvc.perform(
+                        post("/api/v1/inventory/counts/{id}/apply", countId)
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isOk());
 
         // The second apply is refused.
-        mockMvc.perform(post("/api/v1/inventory/counts/{id}/apply", countId).cookie(owner))
+        mockMvc.perform(
+                        post("/api/v1/inventory/counts/{id}/apply", countId)
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("COUNT_NOT_OPEN"));
     }
@@ -329,7 +376,9 @@ class InventoryIntegrationTest extends ScopeTestSupport {
     @DisplayName("a count may be cancelled before it is applied")
     void aCountMayBeCancelledBeforeItIsApplied() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
+        Location branch = location(BRANCH_CODE);
+        String categoryId = createCategory(owner);
+        createVariant(owner, uniqueSku(), categoryId);
 
         MvcResult started =
                 mockMvc.perform(
@@ -337,12 +386,20 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                                         .cookie(owner)
                                         .with(CsrfTestSupport.csrf())
                                         .contentType(MediaType.APPLICATION_JSON)
-                                        .content("{\"locationId\":\"" + branch.getId() + "\"}"))
+                                        .content(
+                                                "{\"locationId\":\""
+                                                        + branch.getId()
+                                                        + "\",\"categoryId\":\""
+                                                        + categoryId
+                                                        + "\"}"))
                         .andExpect(status().isCreated())
                         .andReturn();
         String countId = readId(started);
 
-        mockMvc.perform(post("/api/v1/inventory/counts/{id}/cancel", countId).cookie(owner))
+        mockMvc.perform(
+                        post("/api/v1/inventory/counts/{id}/cancel", countId)
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
     }
@@ -357,9 +414,23 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                 .andExpect(jsonPath("$[?(@.locationId != null)]").isArray());
 
         // The warehouse is not in the scope of this manager, so a filter on it is a 404.
-        Location warehouse = location("WH");
+        Location warehouse = location(WAREHOUSE_CODE);
         mockMvc.perform(
                         get("/api/v1/inventory/stock")
+                                .cookie(manager)
+                                .param("locationId", warehouse.getId().toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("a branch manager never sees the warehouse movements")
+    void aBranchManagerNeverSeesTheWarehouseMovements() throws Exception {
+        Cookie manager = signIn("manager-dm");
+        Location warehouse = location(WAREHOUSE_CODE);
+
+        mockMvc.perform(
+                        get("/api/v1/inventory/movements")
                                 .cookie(manager)
                                 .param("locationId", warehouse.getId().toString()))
                 .andExpect(status().isNotFound())
@@ -370,44 +441,90 @@ class InventoryIntegrationTest extends ScopeTestSupport {
     @DisplayName("a cashier sees no cost in the stock rows")
     void aCashierSeesNoCostInTheStockRows() throws Exception {
         Cookie cashier = signIn("cashier");
+        Cookie owner = signIn("owner");
+        Location branch = location(BRANCH_CODE);
+        String sku = uniqueSku();
+        // The catalogue rows are written by the owner: a cashier may not create a product.
+        UUID variantId = createVariant(owner, sku, null);
+        // The stock is put on the shelf by the owner, so the branch really holds a balance for
+        // this variant.
+        adjust(owner, branch.getId(), variantId, 3);
 
-        mockMvc.perform(get("/api/v1/inventory/stock").cookie(cashier))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.unitCost != null)]").isEmpty())
-                .andExpect(jsonPath("$[?(@.valueAtCost != null)]").isEmpty());
+        // The cashier may see the stock of the branch, so the row is there, but the cost is not.
+        MvcResult answered =
+                mockMvc.perform(
+                                get("/api/v1/inventory/stock")
+                                        .cookie(cashier)
+                                        .param("locationId", branch.getId().toString())
+                                        .param("q", sku))
+                        .andExpect(status().isOk())
+                        .andReturn();
+
+        JsonNode rows = readJson(answered);
+        assertTrue(rows.size() > 0, "The cashier must see the stock of their own branch");
+        for (JsonNode row : rows) {
+            assertFalse(
+                    row.has("unitCost"),
+                    "A cashier may not see the purchase cost of a row: " + row);
+            assertFalse(
+                    row.has("valueAtCost"),
+                    "A cashier may not see the value at cost of a row: " + row);
+        }
+        // The fresh variant is really in the answer, so the check above is not vacuous.
+        assertEquals(
+                variantId.toString(),
+                rows.get(0).get("variantId").asText(),
+                "The answer must hold the fresh variant of this test");
     }
 
     @Test
     @DisplayName("a manager sees the cost at their own branch")
     void aManagerSeesTheCostAtTheirOwnBranch() throws Exception {
         Cookie manager = signIn("manager-dm");
+        Cookie owner = signIn("owner");
+        Location branch = location(BRANCH_CODE);
+        String sku = uniqueSku();
+        UUID variantId = createVariant(owner, sku, null);
 
-        mockMvc.perform(get("/api/v1/inventory/stock").cookie(manager))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].unitCost").exists())
-                .andExpect(jsonPath("$[0].valueAtCost").exists());
+        // The variant has a cost of 400, so the manager may see it.
+        setCost(owner, variantId, "400");
+        adjust(owner, branch.getId(), variantId, 3);
+
+        MvcResult answered =
+                mockMvc.perform(
+                                get("/api/v1/inventory/stock")
+                                        .cookie(manager)
+                                        .param("locationId", branch.getId().toString())
+                                        .param("q", sku))
+                        .andExpect(status().isOk())
+                        .andReturn();
+
+        JsonNode rows = readJson(answered);
+        assertTrue(rows.size() > 0, "The manager must see the stock of their own branch");
+        JsonNode row = rows.get(0);
+        assertEquals(
+                variantId.toString(),
+                row.get("variantId").asText(),
+                "The answer must hold the fresh variant of this test");
+        assertEquals(
+                0,
+                new BigDecimal("400").compareTo(row.get("unitCost").decimalValue()),
+                "The manager must see the purchase cost of the row");
+        assertEquals(
+                0,
+                new BigDecimal("1200").compareTo(row.get("valueAtCost").decimalValue()),
+                "The manager must see the value at cost of the row");
     }
 
     @Test
     @DisplayName("the reorder point makes a row low stock")
     void theReorderPointMakesARowLowStock() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        String sku = uniqueSku();
+        UUID variantId = createVariant(owner, sku, null);
 
-        mockMvc.perform(
-                        post("/api/v1/inventory/adjustments")
-                                .cookie(owner)
-                                .with(CsrfTestSupport.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"locationId\":\""
-                                                + branch.getId()
-                                                + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
-                                                + variantId
-                                                + "\",\"quantityDelta\":2}]}"))
-                .andExpect(status().isCreated());
+        adjust(owner, branch.getId(), variantId, 2);
 
         mockMvc.perform(
                         put("/api/v1/inventory/policies")
@@ -423,79 +540,95 @@ class InventoryIntegrationTest extends ScopeTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reorderPoint").value(5));
 
-        mockMvc.perform(
-                        get("/api/v1/inventory/stock")
-                                .cookie(owner)
-                                .param("locationId", branch.getId().toString()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.isLowStock == true)]").isNotEmpty());
+        // The list is scoped to the fresh variant, so no other balance can answer for it.
+        MvcResult answered =
+                mockMvc.perform(
+                                get("/api/v1/inventory/stock")
+                                        .cookie(owner)
+                                        .param("locationId", branch.getId().toString())
+                                        .param("q", sku))
+                        .andExpect(status().isOk())
+                        .andReturn();
+
+        JsonNode rows = readJson(answered);
+        assertTrue(rows.size() > 0, "The fresh variant must be in the stock rows");
+        assertTrue(
+                rows.get(0).get("isLowStock").asBoolean(),
+                "Two pieces with a reorder point of five is low stock");
 
         // The low stock filter only shows the low rows.
-        mockMvc.perform(
-                        get("/api/v1/inventory/stock")
-                                .cookie(owner)
-                                .param("locationId", branch.getId().toString())
-                                .param("lowStockOnly", "true"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.isLowStock == false)]").isEmpty());
+        MvcResult low =
+                mockMvc.perform(
+                                get("/api/v1/inventory/stock")
+                                        .cookie(owner)
+                                        .param("locationId", branch.getId().toString())
+                                        .param("q", sku)
+                                        .param("lowStockOnly", "true"))
+                        .andExpect(status().isOk())
+                        .andReturn();
+
+        JsonNode lowRows = readJson(low);
+        assertTrue(lowRows.size() > 0, "The low stock filter must show the low row");
+        for (JsonNode row : lowRows) {
+            assertTrue(
+                    row.get("isLowStock").asBoolean(),
+                    "The low stock filter must only show the low rows");
+        }
     }
 
     @Test
     @DisplayName("the movement history holds every movement of the location")
     void theMovementHistoryHoldsEveryMovementOfTheLocation() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        UUID variantId = createVariant(owner, uniqueSku(), null);
 
-        mockMvc.perform(
-                        post("/api/v1/inventory/adjustments")
-                                .cookie(owner)
-                                .with(CsrfTestSupport.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"locationId\":\""
-                                                + branch.getId()
-                                                + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
-                                                + variantId
-                                                + "\",\"quantityDelta\":4}]}"))
-                .andExpect(status().isCreated());
+        adjust(owner, branch.getId(), variantId, 4);
 
-        mockMvc.perform(
-                        get("/api/v1/inventory/movements")
-                                .cookie(owner)
-                                .param("locationId", branch.getId().toString()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items").isArray())
-                .andExpect(jsonPath("$.items[0].movementType").value("ADJUSTMENT_IN"))
-                .andExpect(jsonPath("$.items[0].quantityDelta").value(4))
-                .andExpect(jsonPath("$.items[0].onHandAfter").value(4));
+        MvcResult answered =
+                mockMvc.perform(
+                                get("/api/v1/inventory/movements")
+                                        .cookie(owner)
+                                        .param("locationId", branch.getId().toString())
+                                        .param("variantId", variantId.toString()))
+                        .andExpect(status().isOk())
+                        .andReturn();
+
+        JsonNode items = readJson(answered).get("items");
+        assertTrue(items.size() > 0, "The history must hold the movement of the fresh variant");
+        JsonNode newest = items.get(0);
+        assertEquals(
+                "ADJUSTMENT_IN", newest.get("movementType").asText(), "The newest movement is in");
+        assertEquals(4, newest.get("quantityDelta").asInt(), "The movement adds four pieces");
+        assertEquals(4, newest.get("onHandAfter").asInt(), "The stock after the movement is four");
     }
 
     @Test
     @DisplayName("the location totals add the units of the location")
     void theLocationTotalsAddTheUnitsOfTheLocation() throws Exception {
         Cookie owner = signIn("owner");
-        Location branch = location("DM");
-        UUID variantId = demoVariantId("var-tee-black");
-        deleteBalance(branch, variantId);
+        Location branch = location(BRANCH_CODE);
+        UUID variantId = createVariant(owner, uniqueSku(), null);
 
-        mockMvc.perform(
-                        post("/api/v1/inventory/adjustments")
-                                .cookie(owner)
-                                .with(CsrfTestSupport.csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"locationId\":\""
-                                                + branch.getId()
-                                                + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
-                                                + variantId
-                                                + "\",\"quantityDelta\":6}]}"))
-                .andExpect(status().isCreated());
+        adjust(owner, branch.getId(), variantId, 6);
 
-        mockMvc.perform(get("/api/v1/inventory/stock/totals").cookie(owner))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.locationId == '" + branch.getId() + "')]").isNotEmpty());
+        MvcResult answered =
+                mockMvc.perform(get("/api/v1/inventory/stock/totals").cookie(owner))
+                        .andExpect(status().isOk())
+                        .andReturn();
+
+        JsonNode totals = readJson(answered);
+        JsonNode row = null;
+        for (JsonNode candidate : totals) {
+            if (branch.getId().toString().equals(candidate.get("locationId").asText())) {
+                row = candidate;
+                break;
+            }
+        }
+        assertNotNull(row, "The totals must hold a row for the branch: " + totals);
+        assertTrue(
+                row.get("units").asLong() >= 6,
+                "The units of the branch must at least hold the six pieces of this test");
     }
 
     @Test
@@ -510,8 +643,10 @@ class InventoryIntegrationTest extends ScopeTestSupport {
     @DisplayName("a manager may not adjust the stock of another branch")
     void aManagerMayNotAdjustTheStockOfAnotherBranch() throws Exception {
         Cookie manager = signIn("manager-dm");
+        Cookie owner = signIn("owner");
         Location other = location("UT");
-        UUID variantId = demoVariantId("var-tee-black");
+        // The catalogue rows are written by the owner: a manager may not create a product.
+        UUID variantId = createVariant(owner, uniqueSku(), null);
 
         mockMvc.perform(
                         post("/api/v1/inventory/adjustments")
@@ -541,38 +676,155 @@ class InventoryIntegrationTest extends ScopeTestSupport {
     }
 
     /**
-     * A variant of the demo seed.
+     * Creates a product with one active variant and returns the id of the variant.
      *
-     * @param demoKey the demo key of the variant
-     * @return the id of the variant
+     * <p>The variant gets a unique SKU and a unique primary barcode, so it is active and it never
+     * collides with another row of this test or with the demo seed.
+     *
+     * @param owner the session of the owner
+     * @param sku the unique SKU of the variant
+     * @param categoryId the category of the product, may be {@code null}
+     * @return the id of the new variant
+     * @throws Exception when a request fails
      */
-    private UUID demoVariantId(String demoKey) {
-        return variantRepository.findByDemoKey(demoKey).map(variant -> variant.getId()).orElseThrow();
+    private UUID createVariant(Cookie owner, String sku, String categoryId) throws Exception {
+        String productId = createProduct(owner, categoryId);
+        MvcResult result =
+                mockMvc.perform(
+                                post("/api/v1/catalog/products/{id}/variants", productId)
+                                        .cookie(owner)
+                                        .with(CsrfTestSupport.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"sku\":\""
+                                                        + sku
+                                                        + "\",\"sellingPrice\":\"500\",\"barcode\":\""
+                                                        + uniqueBarcode()
+                                                        + "\"}"))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.isActive").value(true))
+                        .andReturn();
+        return UUID.fromString(readId(result));
     }
 
     /**
-     * Removes the balance of this test, so every test starts from zero.
+     * Creates a product and returns its id.
      *
-     * <p>The balance row is deleted with plain SQL, because the movements are append only and the
-     * test needs a clean start. The movements of the deleted balance are left behind, so the sum of
-     * the deltas of the test variant is never asserted across two tests.
-     *
-     * @param location the location
-     * @param variantId the variant
+     * @param owner the session of the owner
+     * @param categoryId the category of the product, may be {@code null}
+     * @return the id of the new product
+     * @throws Exception when the request fails
      */
-    private void deleteBalance(Location location, UUID variantId) {
-        balanceRepository
-                .findByLocationIdAndVariantId(location.getId(), variantId)
-                .ifPresent(
-                        balance -> {
-                            balanceRepository.delete(balance);
-                            balanceRepository.flush();
-                        });
-        assertFalse(
-                balanceRepository
-                        .findByLocationIdAndVariantId(location.getId(), variantId)
-                        .isPresent(),
-                "The balance of the test must be gone before the test starts");
+    private String createProduct(Cookie owner, String categoryId) throws Exception {
+        StringBuilder content = new StringBuilder();
+        content.append("{\"productCode\":\"")
+                .append(uniqueSku())
+                .append("\",\"name\":\"Test product\"");
+        if (categoryId != null) {
+            content.append(",\"categoryId\":\"").append(categoryId).append("\"");
+        }
+        content.append("}");
+        MvcResult result =
+                mockMvc.perform(
+                                post("/api/v1/catalog/products")
+                                        .cookie(owner)
+                                        .with(CsrfTestSupport.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(content.toString()))
+                        .andExpect(status().isCreated())
+                        .andReturn();
+        return readId(result);
+    }
+
+    /**
+     * Creates a category of its own and returns its id.
+     *
+     * <p>A count that is started for a category holds only the variants of that category, so a
+     * fresh category keeps a fresh count down to a single line.
+     *
+     * @param owner the session of the owner
+     * @return the id of the new category
+     * @throws Exception when the request fails
+     */
+    private String createCategory(Cookie owner) throws Exception {
+        MvcResult result =
+                mockMvc.perform(
+                                post("/api/v1/catalog/categories")
+                                        .cookie(owner)
+                                        .with(CsrfTestSupport.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"name\":\"Test category "
+                                                        + UUID.randomUUID()
+                                                                .toString()
+                                                                .substring(0, 8)
+                                                        + "\"}"))
+                        .andExpect(status().isCreated())
+                        .andReturn();
+        return readId(result);
+    }
+
+    /**
+     * Puts a signed number of pieces on the shelf of a location.
+     *
+     * @param owner the session of the owner
+     * @param locationId the location
+     * @param variantId the variant
+     * @param quantityDelta the signed change of the stock
+     * @throws Exception when the request fails
+     */
+    private void adjust(Cookie owner, UUID locationId, UUID variantId, int quantityDelta)
+            throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/inventory/adjustments")
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"locationId\":\""
+                                                + locationId
+                                                + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
+                                                + variantId
+                                                + "\",\"quantityDelta\":"
+                                                + quantityDelta
+                                                + "}]}"))
+                .andExpect(status().isCreated());
+    }
+
+    /**
+     * Sets the purchase cost of a variant.
+     *
+     * @param owner the session of the owner
+     * @param variantId the variant
+     * @param cost the cost, as a plain number
+     * @throws Exception when the request fails
+     */
+    private void setCost(Cookie owner, UUID variantId, String cost) throws Exception {
+        mockMvc.perform(
+                        post("/api/v1/catalog/variants/{id}/cost", variantId)
+                                .cookie(owner)
+                                .with(CsrfTestSupport.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"costPrice\":\"" + cost + "\"}"))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * A SKU that no other row of this test uses.
+     *
+     * @return the SKU
+     */
+    private static String uniqueSku() {
+        return SKU_PREFIX + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+    }
+
+    /**
+     * A barcode that no other row of this test uses.
+     *
+     * @return the barcode
+     */
+    private static String uniqueBarcode() {
+        return "89" + UUID.randomUUID().toString().replace("-", "").substring(0, 11);
     }
 
     /**
@@ -583,10 +835,36 @@ class InventoryIntegrationTest extends ScopeTestSupport {
      * @throws Exception when the body cannot be read
      */
     private static String readId(MvcResult result) throws Exception {
+        JsonNode node = readJson(result);
+        return node.get("id").asText();
+    }
+
+    /**
+     * Reads the body of an answer as a JSON tree.
+     *
+     * @param result the answer of the request
+     * @return the tree
+     * @throws Exception when the body cannot be read
+     */
+    private static JsonNode readJson(MvcResult result) throws Exception {
         String body = result.getResponse().getContentAsString();
         assertNotNull(body, "The answer must carry a body");
-        com.fasterxml.jackson.databind.JsonNode node =
-                new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
-        return node.get("id").asText();
+        return MAPPER.readTree(body);
+    }
+
+    /**
+     * The line of a variant inside the lines of a count.
+     *
+     * @param lines the lines of the count
+     * @param variantId the variant
+     * @return the line of that variant
+     */
+    private static JsonNode lineOfVariant(JsonNode lines, UUID variantId) {
+        for (JsonNode line : lines) {
+            if (variantId.toString().equals(line.get("variantId").asText())) {
+                return line;
+            }
+        }
+        throw new AssertionError("The count must hold a line for the variant: " + lines);
     }
 }

@@ -12,6 +12,12 @@
 SETLOCAL
 cd /d "%~dp0.."
 
+REM The pinned JDK is used here for the same reason as in run-backend.bat: the
+REM google-java-format that Spotless runs needs a JDK 21, and it fails on a
+REM newer one with "JCCompilationUnit does not have member field endPositions".
+SET "JAVA_HOME=G:\tools\jdk21\jdk-21.0.13.1+2"
+SET "PATH=%JAVA_HOME%\bin;%PATH%"
+
 SET "RESULT=0"
 
 ECHO ============================================================

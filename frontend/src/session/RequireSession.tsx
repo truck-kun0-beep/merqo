@@ -20,7 +20,7 @@ export default function RequireSession({
   children: ReactNode
   permission?: string
 }) {
-  const { user, isLoading, can } = useSession()
+  const { user, isLoading, isBackendUnreachable, can } = useSession()
   const location = useLocation()
 
   if (isLoading) {
@@ -29,6 +29,12 @@ export default function RequireSession({
         Checking the session...
       </div>
     )
+  }
+
+  // The backend could not be reached at all. The free instance is asleep, so
+  // the user is not logged out; the waking screen waits and retries.
+  if (isBackendUnreachable) {
+    return <ServerWakingUp />
   }
 
   if (!user) {

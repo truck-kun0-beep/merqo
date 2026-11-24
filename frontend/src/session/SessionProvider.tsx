@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchCurrentUser,
@@ -6,7 +6,7 @@ import {
   loginAsDemoAccount,
   logout as logoutRequest,
 } from '../api/auth'
-import { ApiError } from '../api/types'
+import { ApiError, BackendUnreachableError } from '../api/types'
 import { SESSION_QUERY_KEY, SessionContext, type SessionState } from './sessionContext'
 
 /**
@@ -27,17 +27,39 @@ import { SESSION_QUERY_KEY, SessionContext, type SessionState } from './sessionC
 export function SessionProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
 
+  // The flag is set inside the query function so that it changes on the very
+  // first failed attempt, not only after every retry has been used. Waiting
+  // for the retries would leave the user looking at a spinner for a minute.
+  const [unreachable, setUnreachable] = useState(false)
+
   const query = useQuery({
     queryKey: SESSION_QUERY_KEY,
-    queryFn: fetchCurrentUser,
+    queryFn: async () => {
+      try {
+        const user = await fetchCurrentUser()
+        setUnreachable(false)
+        return user
+      } catch (error) {
+        if (error instanceof BackendUnreachableError) {
+          setUnreachable(true)
+        }
+        throw error
+      }
+    },
     // A 401 means "nobody is signed in", which is a normal answer and not a
     // failure, so it must not be retried and must not be shown as an error.
+    // A backend that cannot be reached is the free instance waking up, so it
+    // is retried for a while before the user is told anything.
     retry: (failureCount, error) => {
       if (error instanceof ApiError && error.status === 401) {
         return false
       }
+      if (error instanceof BackendUnreachableError) {
+        return failureCount < 8
+      }
       return failureCount < 2
     },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15_000),
     staleTime: 30_000,
   })
 
@@ -84,14 +106,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SessionState>(
     () => ({
       user,
-      isLoading: query.isPending,
+      isLoading: query.isPending && !unreachable,
+      isBackendUnreachable: unreachable,
       can,
       signIn,
       signInAsDemo,
       signOut,
       requireSession,
     }),
-    [user, query.isPending, can, signIn, signInAsDemo, signOut, requireSession],
+    [user, query.isPending, unreachable, can, signIn, signInAsDemo, signOut, requireSession],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

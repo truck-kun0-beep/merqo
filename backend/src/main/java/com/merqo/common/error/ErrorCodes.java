@@ -70,6 +70,42 @@ public final class ErrorCodes {
     /** The request was malformed. */
     public static final String BAD_REQUEST = "BAD_REQUEST";
 
+    /** A variant may not be active without a primary barcode. */
+    public static final String BARCODE_REQUIRED = "BARCODE_REQUIRED";
+
+    /** The barcode is already used by another variant. */
+    public static final String BARCODE_IN_USE = "BARCODE_IN_USE";
+
+    /** The barcode does not follow the rules. */
+    public static final String BARCODE_INVALID = "BARCODE_INVALID";
+
+    /** No variant carries this barcode. */
+    public static final String BARCODE_NOT_FOUND = "BARCODE_NOT_FOUND";
+
+    /** The SKU is already used by another variant. */
+    public static final String SKU_IN_USE = "SKU_IN_USE";
+
+    /** The promotion fights another promotion that is already there. */
+    public static final String PROMOTION_CONFLICT = "PROMOTION_CONFLICT";
+
+    /** There is not enough stock for what was asked. */
+    public static final String INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK";
+
+    /** The transfer may not change into that state. */
+    public static final String INVALID_TRANSITION = "INVALID_TRANSITION";
+
+    /** The variant is still in use and may not be deactivated. */
+    public static final String VARIANT_IN_USE = "VARIANT_IN_USE";
+
+    /** The category or the brand is still in use and may not be deactivated. */
+    public static final String CATEGORY_IN_USE = "CATEGORY_IN_USE";
+
+    /** The stock count is not open, so it may not be changed any more. */
+    public static final String COUNT_NOT_OPEN = "COUNT_NOT_OPEN";
+
+    /** The import file is not usable. */
+    public static final String IMPORT_INVALID = "IMPORT_INVALID";
+
     /** Something unexpected happened. */
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 

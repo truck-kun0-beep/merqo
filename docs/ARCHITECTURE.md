@@ -55,9 +55,10 @@ com.merqo
 ├── settings                    the typed business settings (Prompt 1)
 ├── audit                       audit log (Prompt 1)
 ├── demo                        the demo seed (Prompt 1)
-├── catalog                     products, variants, barcodes (Prompt 2)
-├── inventory                   stock, movements, adjustments (Prompt 2)
-├── transfers                   warehouse to branch transfers (Prompt 2)
+├── catalog                     products, variants, barcodes (Phase 2)
+├── promotion                   the configurable discounts (Phase 2)
+├── inventory                   stock, movements, adjustments (Phase 2)
+├── transfers                   warehouse to branch transfers (Phase 2)
 ├── pos                         point of sale, scan to cart (Prompt 3)
 ├── orders                      online orders, calls, confirmations (Prompt 4)
 ├── customers                   customer history and risk (Prompt 4)
@@ -209,6 +210,95 @@ permission and the scope again on every request.
 
 ---
 
+## 3a. The modules built in Phase 2
+
+Phase 2 adds the catalogue, the pricing, the promotions, the inventory, the
+stock counts and the transfers. They follow the same shape as the modules of
+Phase 1: a controller reads the request, a service holds the rules, and the
+repository is the only place with SQL.
+
+### The catalog module
+
+The **catalog** module owns what the shop sells: the category tree, the brands,
+the products, the sellable variants, their barcodes, their selling prices and
+their costs. It owns the tables `categories`, `brands`, `products`,
+`product_variants`, `variant_barcodes`, `variant_price_history` and
+`variant_cost_history`. The service is `CatalogService`; the pricing is a
+second service, `CatalogPricingService`, which assembles the numbers of a
+priced line, and the CSV import is a third, `CatalogImportService`, which calls
+the same two instead of writing rows of its own.
+
+### The pricing rules
+
+The **pricing** rules are not a module of their own. They are the plain Java
+classes in `com.merqo.catalog.domain`: `PriceCalculator` does the arithmetic,
+`LinePricing` carries the numbers, `TaxPolicy` chooses the rate and decides
+whether a price carries the tax, and `SkuSuggester` builds a readable SKU. They
+know nothing about Spring, so every rounding case is unit tested without a
+context.
+
+### The promotion module
+
+The **promotion** module owns the configurable discounts. It owns the tables
+`promotions`, `promotion_variants` and `promotion_locations`. The service is
+`PromotionService`; the two rules that matter are in the plain Java classes
+`PromotionConflictDetector` (two promotions conflict when they share a variant,
+a channel, a location and a period) and `PromotionResolver` (which one applies
+now). A promotion is never deleted. It is ended or disabled.
+
+### The inventory module
+
+The **inventory** module owns the stock: the balance of every variant at every
+location, the append only movement log, the adjustment documents, the reorder
+policies and the stock counts. It owns the tables `inventory_balances`,
+`inventory_policies`, `stock_movements`, `stock_adjustments`,
+`stock_adjustment_lines`, `stock_counts` and `stock_count_lines`. The service
+the screens use is `StockService`; behind it sits `InventoryService`, the narrow
+interface the later phases use, and `InventoryLedger`, the only implementation
+and the only place that changes the stock.
+
+### The transfer module
+
+The **transfer** module owns the movement of stock from one location to
+another. It owns the tables `stock_transfers`, `stock_transfer_items` and
+`transfer_status_history`. The service is `TransferService`; the state machine
+is the plain Java class `TransferTransitions`, and the quantity rules of one
+line are in `TransferLine`.
+
+### The three rules that hold the Phase 2 modules together
+
+**The dependency rule is one way.** Controllers call services, services call
+repositories, and a module that needs the data of another module calls that
+module's service, never its repository. The pricing service asks the promotion
+service and the inventory service; the import asks the catalog service and the
+inventory service; the transfer service asks the inventory service.
+
+**The domain classes know nothing about Spring.** Everything under
+`catalog/domain`, `inventory/domain` and `transfer/domain` is plain Java. The
+transfer state machine and the price calculator are unit tested with `new` and
+no Spring context, so a rule can be proved without a database and without a
+running application.
+
+**Four tables are append only.** `stock_movements`, `variant_price_history`,
+`variant_cost_history` and `transfer_status_history` have a database trigger
+that blocks `UPDATE` and `DELETE`, and their repositories expose no update and
+no delete method. The rule is therefore in two places that cannot disagree: a
+bug in the application cannot rewrite the history, and the type of the
+repository does not even offer the method.
+
+**The cost is private.** The purchase cost, the margin and the value of the
+stock are only in the answer when the caller holds `COST_VIEW` or
+`PRICE_EDIT` at that location. For everybody else the fields are absent, not
+zero, so a missing cost can never be read as a cost of nothing.
+
+**The scope is the caller's.** Every list query is scoped with
+`context.visibleLocationIds(permission)`, and the location ids travel into the
+repository so the filtering happens in SQL. A record outside the scope is
+answered with `404`, and a record inside the scope without the permission with
+`403`.
+
+---
+
 ## 4. Request flow
 
 ```
@@ -305,6 +395,36 @@ The Vite dev server proxies `/api` to `http://localhost:8080` with the same
 shape. The frontend code is identical in development and production: it always
 calls a relative `/api/v1/...` path.
 
+### The proxy is the security boundary for the client address
+
+The backend reads the address of the caller from the `X-Forwarded-For` header.
+It writes that address into every audit row and counts it in the login throttle:
+twenty failures from one address give a `429`, and five failures for one
+account lock it.
+
+A browser can send any `X-Forwarded-For` it likes. If the proxy passed that
+header on, anybody could send twenty failures with a chosen address and lock
+every account of the shop, or write a false address into the audit log.
+
+So the proxy **drops every forwarded header the browser sent** and writes the
+address Cloudflare saw (`CF-Connecting-IP`, which Cloudflare overwrites on every
+request) instead. The backend then reads the address of the real caller and
+never one the caller chose. The rule is proved by
+`frontend/functions/api/proxy.test.ts`.
+
+The same rule applies to the answers: they carry the session of the person who
+asked, so they are sent with `Cache-Control: no-store` and are never stored by
+the browser or by the edge.
+
+### The free backend is asleep from time to time
+
+A free Render instance sleeps after fifteen idle minutes. The proxy answers
+with `503` and a problem detail when the backend does not answer, and the
+frontend treats `502`, `503` and `504` as "the backend is waking up": the user
+sees the waking screen and the request retries on its own. These statuses are
+not business errors, so they never turn into a red box or a "wrong password"
+message.
+
 ### Fallback
 
 If the Pages Function cannot be used (for example the account cannot create
@@ -326,11 +446,20 @@ or wrong column fails the startup instead of silently changing the database.
 
 ```
 backend/src/main/resources/db/migration/
-└── V1__baseline_schema.sql
+├── V1__baseline_schema.sql
+├── V2__access_control_and_auth.sql
+├── V3__seed_permission_templates.sql
+└── V4__catalog_inventory_and_transfers.sql
 ```
 
-Every later prompt adds `V2__...`, `V3__...` and so on. A migration is never
+Every later prompt adds `V5__...` and so on. A migration is never
 edited after it has been applied; a mistake is fixed with a new migration.
+
+`V4__catalog_inventory_and_transfers.sql` is the schema of Phase 2. It creates
+the catalogue, the promotions, the inventory and the transfers, the three
+number sequences (`ADJ-000001`, `CNT-000001`, `TRF-000001`), the shared
+append only guard `merqo_reject_append_only_mutation` and the four triggers
+that use it.
 
 ### Why PostgreSQL and never H2
 
@@ -411,20 +540,20 @@ Measured startup time and memory use are in the hand-back report of Prompt 0.
 
 | Concept | Where |
 | --- | --- |
-| Encapsulation | `Money`, `BusinessTime`, `MerqoModeProperties`, `MerqoSessionProperties`, `AccessContext`, all domain objects |
-| Abstraction | `BusinessException`, `SecurityFilterChain`, `WebMvcConfigurer`, `PermissionResolver`, `DelegationPolicy` |
+| Encapsulation | `Money`, `BusinessTime`, `MerqoModeProperties`, `MerqoSessionProperties`, `AccessContext`, `InventoryBalance`, `TransferLine`, all domain objects |
+| Abstraction | `BusinessException`, `SecurityFilterChain`, `WebMvcConfigurer`, `PermissionResolver`, `DelegationPolicy`, `InventoryService` |
 | Inheritance | the `BusinessException` family |
-| Polymorphism | `GlobalExceptionHandler`, the `DemoDataContributor` family, later the discount and payment strategies |
-| Interfaces | `AppUserRepository`, `AuditLogRepository`, `DemoDataContributor`, later `CourierProvider`, `PaymentVerifier`, `DiscountRule`, `ReceiptRenderer`, `WebsiteOrderSource` |
-| Strategy | `SessionSecurityContextRepository`, the permission resolver, later discount rules, payment verifiers, cost allocation |
+| Polymorphism | `GlobalExceptionHandler`, the `DemoDataContributor` family, the `VariantDeactivationGuard` family, later the discount and payment strategies |
+| Interfaces | `AppUserRepository`, `AuditLogRepository`, `DemoDataContributor`, `InventoryService`, `VariantDeactivationGuard`, later `CourierProvider`, `PaymentVerifier`, `DiscountRule`, `ReceiptRenderer`, `WebsiteOrderSource` |
+| Strategy | `SessionSecurityContextRepository`, the permission resolver, `VariantDeactivationGuard`, `OpenTransferVariantGuard`, later discount rules, payment verifiers, cost allocation |
 | Adapter | `PathaoAdapter`, `SteadfastAdapter`, `MockCourierAdapter`, website connectors |
 | Factory / registry | choosing an implementation from `COURIER_MODE` and friends |
-| State | order and transfer status transitions in one transition table |
+| State | the transfer status transitions in one transition table, `TransferTransitions`; the order transitions come later |
 | Observer | Spring application events for stock and order changes; the `DemoSeeder` reacts to the application start |
-| Composition | a sale contains lines; an order contains lines, payments and shipments; `EffectivePermissions` holds the global and the location scoped permissions |
-| Value objects | `Money`, `Quantity` as immutable records, `ProblemDetail` and `PageResponse` as records |
+| Composition | a sale contains lines; an order contains lines, payments and shipments; `EffectivePermissions` holds the global and the location scoped permissions; `LinePricing` holds every part of a price |
+| Value objects | `Money`, `Quantity` as immutable records, `ProblemDetail` and `PageResponse` as records, `LinePricing`, `InventoryCommand`, `StockCountCalculator.Variance` |
 | Builder | `AuditEvent.Builder`, for an event with many optional parts |
-| Fail fast | `AccessContext.requireGlobal` and `require`, so a service cannot forget to check |
+| Fail fast | `AccessContext.requireGlobal` and `require`, `TransferTransitions.require`, `CatalogRules`, `InventoryBalance`, so a service cannot forget to check |
 
 Only the ones that are real in the current code are described in
 [JAVA_GUIDE.md](JAVA_GUIDE.md) with a concrete class path. The rest appear as
@@ -460,6 +589,15 @@ the prompts that need them arrive.
 - Sensitive actions are audited: who, when, old value, new value. The audit
   log is append only, and a database trigger refuses any `UPDATE` or
   `DELETE`.
+- **The cost is private.** The purchase cost, the margin and the value of the
+  stock are only part of an answer when the caller holds `COST_VIEW` or
+  `PRICE_EDIT` at that location. For everybody else the fields are **absent,
+  not zero**, so a missing cost can never be read as a cost of nothing.
+- **The scope is the caller's.** Every list query is scoped with
+  `context.visibleLocationIds(permission)`, and the location ids travel into
+  the repository, so the filtering happens in SQL and never in memory. A
+  warehouse manager and a branch manager therefore see different stock, and a
+  branch manager never sees the warehouse on hand numbers.
 - Secrets only in environment variables. `.env` is in `.gitignore`.
 - No personal data and no secrets in the logs.
 - The session cookie is `HttpOnly`, `SameSite=Lax` and host only, so it never

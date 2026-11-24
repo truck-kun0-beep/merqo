@@ -186,6 +186,24 @@ public class AccessContext {
     }
 
     /**
+     * The locations at which the caller may do something, where the owner may do it everywhere.
+     *
+     * <p>The owner holds every permission everywhere, so the owner may see every location of the
+     * business. The list of the locations that exist is passed in, because the access module does
+     * not know which locations there are: that is the business of the location module.
+     *
+     * @param permission the permission
+     * @param allLocationIds the ids of every location of the business
+     * @return the location ids, never {@code null}
+     */
+    public Set<UUID> visibleLocationIds(Permission permission, Set<UUID> allLocationIds) {
+        if (isOwner()) {
+            return Set.copyOf(allLocationIds);
+        }
+        return visibleLocationIds(permission);
+    }
+
+    /**
      * The locations the caller is assigned to.
      *
      * @return the location ids

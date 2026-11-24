@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ import com.merqo.location.LocationRepository;
  * </ul>
  */
 @Component
+@ConditionalOnProperty(name = "merqo.demo-mode", havingValue = "true")
 public class DemoLocationsContributor implements DemoDataContributor {
 
     /** The demo locations and their codes. */

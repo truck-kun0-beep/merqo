@@ -83,5 +83,125 @@ public enum AuditAction {
     TEMPLATE_UPDATED,
 
     /** A business setting was changed. */
-    SETTING_CHANGED
+    SETTING_CHANGED,
+
+    /** A category was created. */
+    CATEGORY_CREATED,
+
+    /** A category was edited. */
+    CATEGORY_UPDATED,
+
+    /** A category was deactivated. */
+    CATEGORY_DEACTIVATED,
+
+    /** A category was activated again. */
+    CATEGORY_ACTIVATED,
+
+    /** A brand was created. */
+    BRAND_CREATED,
+
+    /** A brand was edited. */
+    BRAND_UPDATED,
+
+    /** A brand was deactivated. */
+    BRAND_DEACTIVATED,
+
+    /** A brand was activated again. */
+    BRAND_ACTIVATED,
+
+    /** A product was created. */
+    PRODUCT_CREATED,
+
+    /** A product was edited. */
+    PRODUCT_UPDATED,
+
+    /** A product was deactivated. */
+    PRODUCT_DEACTIVATED,
+
+    /** A product was activated again. */
+    PRODUCT_ACTIVATED,
+
+    /** A variant was created. */
+    VARIANT_CREATED,
+
+    /** A variant was edited. */
+    VARIANT_UPDATED,
+
+    /** A variant was deactivated. */
+    VARIANT_DEACTIVATED,
+
+    /** A variant was activated again. */
+    VARIANT_ACTIVATED,
+
+    /** The selling price of a variant was changed. */
+    PRICE_CHANGED,
+
+    /** The cost price of a variant was changed. */
+    COST_CHANGED,
+
+    /** A barcode was added to a variant. */
+    BARCODE_ADDED,
+
+    /** A barcode of a variant was changed. */
+    BARCODE_CHANGED,
+
+    /** A barcode of a variant was removed. */
+    BARCODE_REMOVED,
+
+    /** A promotion was created. */
+    PROMOTION_CREATED,
+
+    /** A promotion was edited. */
+    PROMOTION_UPDATED,
+
+    /** A promotion was ended. */
+    PROMOTION_ENDED,
+
+    /** A promotion was enabled. */
+    PROMOTION_ENABLED,
+
+    /** A promotion was disabled. */
+    PROMOTION_DISABLED,
+
+    /** A stock adjustment was created. */
+    ADJUSTMENT_CREATED,
+
+    /** A stock policy was changed. */
+    INVENTORY_POLICY_CHANGED,
+
+    /** A stock count was started. */
+    COUNT_STARTED,
+
+    /** A stock count was submitted. */
+    COUNT_SUBMITTED,
+
+    /** A stock count was applied. */
+    COUNT_APPLIED,
+
+    /** A stock count was cancelled. */
+    COUNT_CANCELLED,
+
+    /** A stock transfer was requested. */
+    TRANSFER_REQUESTED,
+
+    /** A stock transfer was approved. */
+    TRANSFER_APPROVED,
+
+    /** A stock transfer was rejected. */
+    TRANSFER_REJECTED,
+
+    /** A stock transfer was dispatched. */
+    TRANSFER_DISPATCHED,
+
+    /** A stock transfer was received. */
+    TRANSFER_RECEIVED,
+
+    /** A stock transfer was closed with a shortage. */
+    TRANSFER_CLOSED_WITH_SHORTAGE,
+
+    /** A stock transfer was cancelled. */
+    TRANSFER_CANCELLED,
+
+    /** A catalog import was committed. */
+    CATALOG_IMPORTED
 }

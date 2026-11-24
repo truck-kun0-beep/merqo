@@ -262,3 +262,210 @@ of something a reviewer has to remember.
 `@PermitAll` in the controllers. That would spread the rule over many files,
 and a developer who forgets the annotation would open an endpoint silently.
 
+---
+
+## A20 - The proxy decides the address of the caller, not the browser
+
+**Decision:** the Cloudflare Pages Function drops every forwarded header the
+browser sent (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`, `Client-IP`) and
+writes the address Cloudflare saw (`CF-Connecting-IP`) instead. The backend
+reads the address of the caller from `X-Forwarded-For` and never from the
+socket, and it trusts that header only because the proxy is the only thing that
+can reach it in production.
+
+**Reason:** the address of the caller is written into every audit row and it is
+counted in the login throttle. A browser may send any `X-Forwarded-For` it
+likes, so a proxy that passed the header on would let anybody lock every
+account of the shop with twenty failures and write a false address into the
+audit log. Cloudflare overwrites `CF-Connecting-IP` on every request, so the
+value that reaches the backend is the address of the real caller.
+
+**Alternative that was not taken:** trusting the header as it came. It is the
+usual shortcut and it is only safe when nothing else can reach the backend.
+The Render URL is public, so it is not safe here.
+
+**Known limitation:** somebody who calls the Render URL directly is seen as the
+address of Cloudflare. That is written down in
+[docs/ARCHITECTURE.md](ARCHITECTURE.md) and it is the price of the free tier.
+
+---
+
+## A21 - A gateway status is not a business error
+
+**Decision:** the frontend treats `502`, `503` and `504` the same way as a
+network failure. The user sees the waking screen and the request retries on
+its own, and no red error box is shown.
+
+**Reason:** those statuses only mean that the free backend is asleep or busy.
+They carry no business meaning, so showing them as a failed request would
+tell the user that something is wrong with their account when nothing is wrong
+at all. The proxy answers with a problem detail in the same shape as the
+backend, so the frontend has one rule and not three.
+
+---
+
+## A22 - Quantities are whole numbers
+
+**Decision:** every quantity is a whole number of pieces, held as an `int` or a
+`long`. There are no fractional pieces anywhere.
+
+**Reason:** the brief says so, and it is the right model for a shop that sells
+whole shirts and whole shoes. The cost of a piece may have decimals, because
+money always has decimals, but the count of pieces never does.
+
+**Effect:** the columns `on_hand`, `reserved`, `in_inspection`,
+`quantity_delta`, `requested_qty`, `approved_qty`, `dispatched_qty`,
+`received_qty`, `shortage_qty`, `system_qty_at_start`, `counted_qty` and
+`reorder_point` are all `INT`. The CSV import refuses a row whose opening
+quantity is not a whole number with "The opening quantity must be a whole
+number."
+
+---
+
+## A23 - The cost method is latest cost
+
+**Decision:** the current cost of a variant is the newest row of
+`variant_cost_history`. The cost is never stored on the variant itself.
+
+**Reason:** the cost table is append only, so the newest row is the current
+cost and the cost is never in two places at once. It is also the simplest
+method that can be explained in a viva and proved by a query.
+
+**Known limitation:** this is a **latest cost** method, not a weighted average.
+When the price of a purchase changes, the newest row wins, so the value of the
+old stock changes with it. Phase 7 (suppliers and procurement) may replace
+this with a weighted average costing. That change is written down here so the
+decision is visible.
+
+---
+
+## A24 - A stock transfer never reserves stock
+
+**Decision:** a transfer does not reserve anything. The request moves nothing,
+the approval moves nothing and reserves nothing, and only the dispatch takes
+the stock off the shelf of the source. Only the receive puts it on the shelf of
+the destination.
+
+**Reason:** a reservation would freeze the stock of the source while the
+transfer waits, and the source may still sell the last piece in the meantime.
+Because only the dispatch moves the stock, the source is checked at the moment
+the goods really leave, and a dispatch that asks for more than there is
+answers `409 INSUFFICIENT_STOCK`.
+
+**Effect:** the goods in transit are **derived** from the lines
+(`dispatched - received - shortage`) and are never stored as stock anywhere.
+
+---
+
+## A25 - An unusual adjustment is flagged, never approved
+
+**Decision:** an adjustment is flagged as unusual when its value at cost is
+above the setting `threshold.unusual_adjustment_value`. The flag is written on
+the adjustment and nothing else happens.
+
+**Reason:** there is no approval workflow for an adjustment in this version.
+The brief of Phase 8 reads the flag in the Action Center, so the flag is
+written now and the workflow comes with that phase. The threshold is a
+business value, so it comes from the `settings` table and never from a
+constant in the code.
+
+**Known limitation:** until Phase 8 exists, an unusual adjustment is only a
+mark on a document. Nobody is told about it and nothing waits for a decision.
+
+---
+
+## A26 - The bulk selector of a promotion is a snapshot
+
+**Decision:** the bulk selector of a promotion (all the variants of a product,
+a category or a brand) is expanded to concrete variant ids when the promotion
+is created. A variant that is created later is **not** covered automatically.
+
+**Reason:** the expansion is written once, in the `promotion_variants` table,
+so the price of a line is a lookup and not a query over a whole category. The
+price of a variant that did not exist when the promotion was created is
+therefore the normal price.
+
+**Effect:** the promotion screen shows the list of the variants it covers, so
+the owner can see what is covered and extend it by hand.
+
+---
+
+## A27 - The prefix `MQ-` is reserved for the Merqo document numbers
+
+**Decision:** the prefix `MQ-` is reserved for the document numbers of Merqo,
+such as a receipt number or a transfer number, and it may never be used as a
+barcode.
+
+**Reason:** a barcode that looks like a document number would make a scan
+ambiguous, and the document numbers are the ones a customer or a courier may
+read out loud. The rule is applied twice: `BarcodeRules.isValid` refuses the
+prefix in the code, and the check constraint
+`ck_variant_barcodes_no_reserved_prefix` refuses it in the database, so even a
+direct SQL write cannot take it.
+
+**Effect:** the answer of a refused barcode says why in one sentence: "The
+prefix MQ- is reserved for Merqo document numbers."
+
+---
+
+## A28 - A variant may not be active without a primary barcode
+
+**Decision:** a variant that is created without a barcode is saved **inactive**.
+Activating it is refused with `409 BARCODE_REQUIRED` until it has a primary
+barcode. The primary barcode of an active variant may not be removed.
+
+**Reason:** a sellable variant without a code cannot be scanned, so it cannot
+be sold at the counter. Saving it inactive instead of refusing the creation
+keeps the work of the user: the variant exists and can be given its barcode
+later, and the screen shows that it is not sellable yet.
+
+**Effect:** one table holds the primary code and the alternates, so a code is
+unique across both kinds and a duplicate is refused with
+`409 BARCODE_IN_USE`.
+
+---
+
+## A29 - The tax rate of a product wins over the global rate
+
+**Decision:** the current tax rate of a product is the override on the
+product (`products.tax_rate_percent`). A product without a rate of its own
+falls back to the global setting `tax.rate_percent`.
+
+**Reason:** some goods have another rate than the shop, and the rate belongs
+to the product, not to the shop. The rule lives in `TaxPolicy.effectiveRate`,
+so the service, the preview and the tests all apply the same one.
+
+**Effect:** whether the prices carry the tax is decided by the global setting
+`tax.inclusive`, and the price calculator is told which of the two applies.
+
+---
+
+## A30 - The cost fields are absent, not zero
+
+**Decision:** the purchase cost, the margin and the value of the stock are
+only part of an answer when the caller holds `COST_VIEW` or `PRICE_EDIT` at
+that location. For everybody else the fields are simply not in the answer.
+
+**Reason:** zero is a number, and a number is read as a fact. A screen could
+not tell the difference between "this variant costs nothing" and "you are not
+allowed to know the cost", and a margin computed from it would be wrong
+instead of missing. The brief asks for the fields to be absent, and the rule
+is in one place: `CatalogService.maySeeCost` and
+`CatalogService.requireCostVisibility`.
+
+---
+
+## A31 - The goods in transit are derived, never stored
+
+**Decision:** a transfer that is on the way is derived from the lines of the
+transfer. It is never stored as stock in any table.
+
+**Reason:** a stored number can fall out of step with the other numbers. When
+a part of the goods arrives, the received quantity changes, and a stored "in
+transit" column would have to be updated in the same transaction or it would
+lie. `TransferLine.getInTransit` computes it from the three stored numbers
+every time, so there is nothing to keep in step.
+
+**Effect:** the same reasoning applies to the available stock of a balance:
+it is `onHand - reserved`, not a column of its own.
+

@@ -37,6 +37,16 @@ comment that says what it is responsible for and which concept it demonstrates.
 | **Strategy** | `com.merqo.user.SessionSecurityContextRepository` | Where the signed in user is kept is one replaceable piece. Swapping it changes nothing else. |
 | **Interfaces** | `com.merqo.user.AppUserRepository`, `com.merqo.audit.AuditLogRepository` | The services depend on the contract, not on Spring Data. The audit repository even has no update and no delete method, so the append only rule is part of the type. |
 | **Builder** | `com.merqo.audit.AuditEvent.Builder` | An audit event has many optional parts. The builder keeps the call site readable and gives the constructor one meaning. |
+| **Encapsulation** | `com.merqo.inventory.domain.InventoryBalance` | The three numbers of a balance are private. Every change goes through a method, so nothing is ever negative and the reservation never exceeds the stock on the shelf. |
+| **Encapsulation** | `com.merqo.transfer.domain.TransferLine` | The four quantities of a transfer line are private. The rules that keep them in step hold at every moment. |
+| **Enums with behaviour** | `com.merqo.inventory.domain.MovementType` | Every movement type knows its own sign and its own bucket of the balance, so no other class ever needs a switch over the type. |
+| **State pattern as a table** | `com.merqo.transfer.domain.TransferTransitions` | The whole state machine of a transfer is one map from a state to the states that may follow it. |
+| **Records** | `LinePricing`, `InventoryCommand`, `StockCountCalculator.Variance` | Short immutable carriers for the numbers of a priced line, of a stock change and of a counted line. |
+| **Pure functions** | `BarcodeRules`, `SkuSuggester`, `TaxPolicy`, `PriceCalculator`, `PromotionConflictDetector`, `PromotionResolver`, `StockCountCalculator`, `LowStockPolicy`, `AdjustmentFlagPolicy`, `CsvReader`, `CatalogImportValidator` | Plain Java with no Spring and no database, so every rule is unit tested on its own. |
+| **Strategy** | `com.merqo.catalog.VariantDeactivationGuard` | Every module may put its own veto on deactivating a variant, and the catalog service finds them without knowing the modules. |
+| **Interface as the guard** | `StockMovementRepository`, `VariantPriceHistoryRepository`, `VariantCostHistoryRepository`, `TransferStatusHistoryRepository` | The append only rule is part of the shape of the interface: there is no update method and no delete method. |
+| **Delegation** | `CatalogPricingService`, `CatalogImportService` | The heavy lifting is left to the price calculator, the promotion service and the inventory service, so every rule lives in exactly one place. |
+| **Fail fast** | `TransferTransitions.require`, `CatalogRules`, `InventoryBalance`, `StockCountCalculator` | Every rule that is broken throws, so a broken request never writes half of what it wanted. |
 
 ---
 
@@ -179,7 +189,117 @@ an `ApiError` with a stable `errorCode`.
 
 ---
 
-## 7. Likely viva questions and their answers
+## 7. The Phase 2 classes: what each one owns and what it demonstrates
+
+Phase 2 is the catalogue, the pricing, the promotions, the inventory, the
+stock counts and the transfers. Every class below exists in the code, under
+`backend/src/main/java/com/merqo/`.
+
+The classes in `domain/` are the viva core: they are plain Java, they have no
+Spring in them, and they are unit tested with `new` and no context.
+
+### 7.1 The catalog domain (`com.merqo.catalog.domain`)
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `BarcodeRules` | Normalise a barcode and say whether it may be stored: trim, 1 to 64 characters, no whitespace or control characters, case sensitive, and never the reserved prefix `MQ-`. | **Encapsulation** and **single responsibility**: the rules live in one class, so the catalog service, the CSV import and the tests all apply exactly the same ones. |
+| `SkuSuggester` | Suggest a readable SKU from the product code and the attributes, for example `OT001-BLK-M`. | **Pure function** and **strategy**: the short forms live in a table, so a new colour needs one line and the answer is always the same. |
+| `TaxPolicy` | Choose the tax rate of a product (the product wins, else the global setting) and say whether a price already carries the tax. | **Null Object** and **pure function**: a missing product rate is handled as an empty optional, so the caller never checks for `null` twice. |
+| `PriceCalculator` | Turn a list price, a promotion, a manual discount, a quantity and a tax rate into the numbers of a priced line. | **Single responsibility** and **static factory**: the class does arithmetic only, is never instantiated and holds no state. |
+| `LinePricing` | Hold the numbers of one priced line: list price, both discounts, net unit price, quantity, subtotal, tax, total and the `belowCost` flag. | **Records** and **immutability**: the calculator builds a new one instead of changing an existing one. |
+| `Promotion` | Hold the identity of a promotion and answer "is it active at this moment?". | **Encapsulation** and **pure function**: the expiry is computed from the dates, so it is right at the moment it is asked and no scheduled job is needed. |
+| `PromotionConflictDetector` | Answer "do these two promotions conflict?" for a pair and for a whole list. | **Single responsibility** and **composition**: the answer is a `Conflict` record that carries both promotions and the variants they share, not a bare boolean. |
+| `PromotionResolver` | Pick the one promotion that applies to a variant in a channel at a location right now. | **Single responsibility** and **strategy**: the resolver only chooses, and the rule "the bigger discount wins" is stated in one place. |
+| `CsvReader` | Turn the text of a CSV file into rows of cells, following RFC 4180 (quotes, commas inside quotes, line breaks, the UTF-8 byte order mark). | **Encapsulation** and **immutability**: the scanning state is private and the answer is an unmodifiable list of unmodifiable rows. |
+| `CatalogImportValidator` | Check the parsed rows of an import and answer with the errors, one per row, and a summary. | **Single responsibility** and **composition**: the answer is a `Result` record that carries the errors and the summary together. |
+| `DiscountType` | Name the two kinds of discount and say whether a value is acceptable for each. | **Enums with behaviour**: a percentage is above zero and at most one hundred, so a promotion cannot exist in a shape the calculator cannot handle. |
+| `Scope` | Name the channels a promotion may cover (`POS`, `ONLINE`, `BOTH`) and say whether two scopes share a channel. | **Enums with behaviour**: the overlap rule is one of the four conditions of the conflict detector. |
+
+### 7.2 The inventory domain (`com.merqo.inventory.domain`)
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `InventoryBalance` | Hold the three numbers of a balance (`onHand`, `reserved`, `inInspection`) and keep them correct through `receive`, `remove`, `reserve`, `release`, `fulfillReservation`, `moveToInspection` and `resolveInspection`. | **Encapsulation** and **fail fast**: the numbers are private, there is no setter, and a change that would break an invariant throws instead of writing half of it. |
+| `MovementType` | Name every kind of stock movement and say how much it changes the stock and which bucket of the balance it touches. | **Enums with behaviour** and **open/closed principle**: each constant knows its own sign, so no switch over the type is ever needed anywhere else. |
+| `StockCountCalculator` | Work out the variance of a counted line and how that difference is applied to the stock of the moment. | **Pure function** and **immutability**: the answer is a record, so a caller cannot change it afterwards. |
+| `AdjustmentFlagPolicy` | Answer "is this adjustment worth a look?" by comparing its value at cost with the threshold. | **Strategy** and **pure function**: the threshold is a parameter, so the same rule works for another threshold without a new class. |
+| `LowStockPolicy` | Answer "is this variant low on stock at this location?" from the available stock and the reorder point. | **Null Object** and **pure function**: a missing policy row is handled by passing the default, so the caller never checks for `null`. |
+| `InsufficientStockException` | Raised when there is not enough stock for what was asked. | **Exceptions**: it extends `RuntimeException`, so the caller is not forced to catch it and the service turns it into `409 INSUFFICIENT_STOCK`. |
+
+### 7.3 The transfer domain (`com.merqo.transfer.domain`)
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `TransferStatus` | Name the eight states a transfer goes through and say which of them are final and which mean the goods are on the way. | **Closed enum**: a switch over it is always exhaustive, so a new state cannot be forgotten in one of the branches. |
+| `TransferTransitions` | Answer "may a transfer go from this state to that state?" from one table. | **State pattern as a table** and **fail fast**: the whole machine is one map, and `require` throws instead of returning `false`. |
+| `TransferLine` | Hold the four quantities of one line and keep them in step: approved ≤ requested, dispatched ≤ approved, received + shortage ≤ dispatched. | **Encapsulation** and **derived value**: the goods in transit are computed, never stored, so they can never disagree with the other numbers. |
+| `InvalidTransitionException` | Raised when a transfer is asked to change into a state it may not have. | **Exceptions**: the service catches it and answers `409 INVALID_TRANSITION`, so a double submit of a dispatch never moves the stock twice. |
+
+### 7.4 The services
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `com.merqo.catalog.CatalogService` | Create, edit, deactivate and activate the categories, the brands, the products and the variants, and keep the barcodes, the prices and the costs correct. | **Single responsibility**, **dependency injection** and **fail fast**: the repositories, the audit log and the clock are injected, and a broken rule throws before anything is written. |
+| `com.merqo.catalog.CatalogPricingService` | Turn a variant, a channel and a location into the numbers of a priced line: list price, discount, net unit price, tax and total. | **Facade** and **delegation**: the caller never sees the promotion service, the settings and the inventory service. |
+| `com.merqo.catalog.CatalogImportService` | Read a CSV file, check it, and then apply it through the same rules as the screens use. | **Facade** and **delegation**: the import writes nothing behind the back of the catalog and the inventory services, so a barcode rule is the same whether a product was typed in or imported. |
+| `com.merqo.catalog.CatalogRules` | Answer the small catalog questions over and over: is this barcode allowed, is this SKU free, may this category have a child. | **Single responsibility** and **static utility with an explicit parameter**: every method takes the repository it needs, so the class holds no state. |
+| `com.merqo.catalog.VariantDeactivationGuard` | Let a module say "this variant may not be deactivated yet". | **Strategy** and **open/closed principle**: the transfer module adds a veto without changing the catalog service. |
+| `com.merqo.promotion.PromotionService` | Create, change, end and enable the promotions, and pick the promotion that applies to a variant at a place in a channel. | **Single responsibility** and **fail fast**: a conflicting promotion is refused with `PROMOTION_CONFLICT`, and a promotion is never deleted, only ended or disabled. |
+| `com.merqo.inventory.StockService` | Answer "how much stock is there", "change the stock", "count the stock" and "how much should be kept", always inside the scope of the caller. | **Facade** and **fail fast**: the callers ask a question in business words and never touch a balance. |
+| `com.merqo.inventory.InventoryService` | Give the later phases one narrow door into the stock, so they never touch a balance and never write a movement themselves. | **Interface** and **open/closed principle**: a new phase adds a call, never a new way of writing to the balances. |
+| `com.merqo.inventory.InventoryLedger` | The one place where the stock changes: it locks the balance row, writes the movement and keeps the invariants. | **Single responsibility** and **fail fast**: a change that would break an invariant throws instead of writing half of it. |
+| `com.merqo.transfer.TransferService` | Move stock from one location to another, one step at a time, and keep the state machine honest. | **State pattern as a table** and **fail fast**: the transitions live in one plain Java class, so an impossible step throws instead of writing half of it. |
+| `com.merqo.transfer.OpenTransferVariantGuard` | Say that a variant may not be deactivated while it is on an open transfer. | **Strategy** and **observer**: Spring discovers the guard, so the catalog service never learns that the transfer module exists. |
+
+### 7.5 The controllers
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `com.merqo.catalog.CatalogController` | Translate HTTP into calls on `CatalogService`: categories, brands, products, variants, barcodes, prices, the lookup and the CSV import. | **Thin controller** and **data transfer object**: the controller only maps the request and the response. |
+| `com.merqo.promotion.PromotionController` | Translate HTTP into calls on `PromotionService`. | **Thin controller** and **data transfer object**. |
+| `com.merqo.inventory.InventoryController` | Translate HTTP into calls on `StockService`: the stock, the movements, the adjustments, the policies and the counts. | **Thin controller** and **data transfer object**: every list is scoped by the permission of the caller. |
+| `com.merqo.transfer.TransferController` | Translate HTTP into calls on `TransferService`, one endpoint per step of the state machine. | **Thin controller** and **data transfer object**: the service decides which step is legal, so a caller cannot skip the approval. |
+
+### 7.6 The entities and the repositories
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `Category`, `Brand` | Hold the data of one category and one brand. Both are deactivated with `is_active` and never deleted. | **Mapping** and **encapsulation**: the class describes how the object is stored, and nothing else. |
+| `Product` | Hold the data every variant of a product shares: the code, the name, the category, the brand and the tax rate. | **Composition**: the product holds the ids of the category and the brand instead of copying their data. |
+| `ProductVariant` | Hold the details a customer chooses: the SKU, the colour, the size and the selling price. | **Encapsulation**: the cost is not stored here, so the cost is never in two places at once. |
+| `VariantBarcode` | Hold one barcode and say whether it is the primary code of the variant or an alternate one. | **Enums with behaviour** and **mapping**: one table holds both kinds, so a code is unique in the whole catalogue. |
+| `VariantPriceHistory`, `VariantCostHistory` | Hold one price or one cost and the moment it became the price or the cost. | **Mapping** and **interface as the guard**: the table is append only and the repository has no update and no delete method. |
+| `StockBalance` | Hold the three numbers of the balance in the database. | **Optimistic locking** and **composition**: the `version` column makes two writers fight it out instead of overwriting each other. |
+| `StockMovement` | Hold one physical change of the stock of one variant at one location. | **Mapping** and **append only**: the sum of the deltas of a balance is always its stock on the shelf. |
+| `StockAdjustment`, `StockAdjustmentLine` | Hold the head of an adjustment and its lines: the number, the location, the reason, the flag and the value at cost. | **Enums with behaviour** and **composition**: the lines belong to the adjustment and are never used on their own. |
+| `StockCount`, `StockCountLine` | Hold the head of a count and its lines: the snapshot of the system quantity and the quantity the counter wrote down. | **Enums with behaviour** and **mapping**: the four states are `IN_PROGRESS`, `SUBMITTED`, `APPLIED` and `CANCELLED`. |
+| `InventoryPolicy` | Hold the reorder point, the target stock and the online safety stock of one variant at one location. | **Mapping**: the reorder point is what makes the low stock flag work. |
+| `InventoryCommand` | Carry everything a movement needs, so the service methods stay short. | **Value object**: it is built once and never changed, so the same command always produces the same movement. |
+| `Promotion` (entity), `PromotionVariant`, `PromotionLocation` | Hold one discount and the two sets of links: the variants it covers and the locations it covers. | **Composition** and **encapsulation**: the promotion itself stays small and the two sets can be queried on their own. |
+| `StockTransfer`, `StockTransferItem` | Hold the head of a transfer and its lines: the number, the two places, the state and the four quantities of every line. | **Mapping**: the state machine lives in `TransferTransitions`, so there is exactly one transition table. |
+| `TransferStatusHistory` | Hold one change of the state of a transfer: who did it, when, from which state to which state and why. | **Append only**: the history is written once and never rewritten. |
+| `CategoryRepository`, `BrandRepository`, `ProductRepository`, `ProductVariantRepository`, `VariantBarcodeRepository` | The only place that writes SQL about the catalogue. | **Abstraction**: the services depend on this contract, not on Spring Data. |
+| `VariantPriceHistoryRepository`, `VariantCostHistoryRepository`, `StockMovementRepository`, `TransferStatusHistoryRepository` | The only place that writes SQL about the append only tables. | **Interface as the guard**: the append only rule is part of the type, so no service can break it. |
+| `StockBalanceRepository` | The only place that writes SQL about the balances. | **Strategy**: the pessimistic lock is part of the contract, so the caller cannot forget it. |
+| `StockAdjustmentRepository`, `StockAdjustmentLineRepository`, `StockCountRepository`, `StockCountLineRepository`, `InventoryPolicyRepository` | The only place that writes SQL about the adjustments, the counts and the policies. | **Abstraction**: the services depend on this contract, not on Spring Data. |
+| `StockTransferRepository`, `StockTransferItemRepository` | The only place that writes SQL about the transfers and their lines. | **Abstraction**: the services depend on this contract, not on Spring Data. |
+| `PromotionRepository`, `PromotionVariantRepository`, `PromotionLocationRepository` | The only place that writes SQL about the promotions and the sets they cover. | **Abstraction**: the services depend on this contract, not on Spring Data. |
+
+### 7.7 The tests that prove the Phase 2 rules
+
+| Test | What it proves |
+| --- | --- |
+| `backend/src/test/java/com/merqo/catalog/domain/BarcodeRulesTest.java` | The normalisation, the length limit, the reserved prefix `MQ-` and the refusal of whitespace. |
+| `backend/src/test/java/com/merqo/catalog/domain/SkuSuggesterTest.java` | The suggestion is the same for the same input, and the short forms are used. |
+| `backend/src/test/java/com/merqo/catalog/domain/PriceCalculatorTest.java` | The rounding rule, the inclusive and the exclusive tax, both discounts and the `belowCost` flag. |
+| `backend/src/test/java/com/merqo/catalog/domain/PromotionDomainTest.java` | The dates of a promotion, and every combination of the four conditions of a conflict. |
+| `backend/src/test/java/com/merqo/catalog/domain/CsvImportTest.java` | The awkward CSV cases: quotes, commas inside quotes, the byte order mark and empty lines. |
+| `backend/src/test/java/com/merqo/inventory/domain/InventoryDomainTest.java` | The invariants of the balance: nothing negative, the reservation never exceeds the stock, the available stock is the difference. |
+| `backend/src/test/java/com/merqo/transfer/domain/TransferDomainTest.java` | Every transition of the table, the valid ones and the invalid ones, and the quantity rules of a line. |
+
+---
+
+## 8. Likely viva questions and their answers
 
 **Q: Why `BigDecimal` and not `double` for money?**
 A: `double` is a binary floating point number, so it cannot represent values
@@ -350,11 +470,121 @@ an endpoint that answers. A new endpoint that nobody added to the list is
 therefore refused by the chain, and the test fails the moment somebody adds an
 endpoint and forgets to think about it.
 
+**Q: Where is the transfer state machine and why is it one table?**
+A: In `com.merqo.transfer.domain.TransferTransitions`. The whole machine is one
+map from a state to the states that may follow it, so it can be read in one look
+and printed in the documentation. It is a separate class because the rule is a
+rule about the data and not about the database, and because it can then be unit
+tested without Spring and without a database. `TransferDomainTest` walks every
+transition of the table, the valid ones and the invalid ones. The service asks
+the table and turns the answer into `409 INVALID_TRANSITION`, so a service can
+never put a transfer into a state it may not have.
+
+**Q: How do you stop two cashiers selling the last unit?**
+A: With a pessimistic row lock on the balance. `StockBalanceRepository
+.findForUpdate` reads the balance row with `LockModeType.PESSIMISTIC_WRITE`, and
+`InventoryLedger.lockOrCreate` uses it for every change. The row stays locked
+until the transaction ends, so the second request reads the new number and not
+the old one, and it is refused with `409 INSUFFICIENT_STOCK`. On top of that,
+the balance itself is turned into the plain Java `InventoryBalance` and the
+change is applied there, so the invariants ("nothing negative, the reservation
+never exceeds the stock on the shelf") can never be broken by a caller.
+
+**Q: Why are the movements append only and how do you prove it?**
+A: Two ways, and they are independent. In the database, the function
+`merqo_reject_append_only_mutation` is attached to `stock_movements`,
+`variant_price_history`, `variant_cost_history` and `transfer_status_history` as
+a `BEFORE UPDATE OR DELETE` trigger, so even a bug in the application cannot
+rewrite the history. In the code, the four repositories have no update method
+and no delete method, so the append only rule is part of the shape of the type
+and not only a convention. The sum of the deltas of a balance is therefore
+always its stock on the shelf, and that is what the invariant test proves.
+
+**Q: How does the count apply rule keep the sales that happened during the
+count?**
+A: The difference is counted against the quantity the system had **at the start
+of the count**, and it is applied to the stock **of the moment**. The snapshot
+is taken when the count starts, so the variance is "counted minus the snapshot",
+and the correction is added to whatever the balance says now. A sale of two
+pieces during the count therefore is not thrown away: the counter counted what
+was on the shelf, and the correction is the difference between the shelf and the
+snapshot. The rule lives in `StockCountCalculator`, and a correction that would
+take the stock below the reservation is refused with
+`409 INSUFFICIENT_STOCK`.
+
+**Q: Why is `PromotionConflictDetector` a separate class?**
+A: Because the rule is a rule about the data, and it has four conditions that
+all have to hold: the two promotions share a variant, their scopes overlap,
+their date ranges overlap, and their location sets meet. Putting that in one
+pure function means every combination is unit tested without Spring and without
+a database, and the service only has to turn the answer into an error code. It
+is also a separate class because the answer is a `Conflict` record that carries
+both promotions and the variants they share, so the message can name them
+instead of saying "there is a conflict".
+
+**Q: Why is the cost field absent instead of zero for a cashier?**
+A: Because zero is a number, and a number is read as a fact. If the cost were
+zero for everybody who may not see it, a screen could not tell the difference
+between "this variant costs nothing" and "you are not allowed to know the
+cost", and a margin computed from it would be wrong instead of missing. So the
+field is simply not in the answer: `CatalogService.toVariant` only adds
+`costPrice` when the caller holds `COST_VIEW` or `PRICE_EDIT`, and
+`CatalogPricingService` only adds `cost` and the value at cost under the same
+rule. The same rule applies to the stock value of a location.
+
+**Q: How is the reserved prefix `MQ-` protected?**
+A: In two places. `BarcodeRules.isValid` refuses any barcode that starts with
+`MQ-`, and `BarcodeRules.rejectionReason` says why in one sentence, so the
+message names the rule. In the database, the check constraint
+`ck_variant_barcodes_no_reserved_prefix` refuses any row whose code starts with
+`MQ-%`, so even a direct SQL write cannot take a Merqo document number. The
+prefix is reserved because the document numbers of Merqo look like
+`ADJ-000001`, `CNT-000001` and `TRF-000001`, and a barcode that looks like a
+document number would make a scan ambiguous.
+
+**Q: What is the difference between an approved quantity and a dispatched
+quantity?**
+A: The approved quantity is what the approver agreed to, and it is at most the
+requested quantity. The dispatched quantity is what really left the source
+shelf, and it is at most the approved quantity. The gap between them is
+`getOutstandingToDispatch`, the quantity that may still be sent. The approval
+does not move and does not reserve anything: only the dispatch moves the stock,
+so the source is checked at the moment the goods actually leave. The four
+numbers of a line are held by `TransferLine`, which is plain Java and keeps
+them in step.
+
+**Q: Why is the goods in transit derived and never stored?**
+A: Because a stored number can disagree with the other numbers. The goods on the
+way are `dispatched - received - shortage`, and `TransferLine.getInTransit`
+computes it from the three stored numbers every time. So there is no fourth
+column that could fall out of step when a part of the goods arrives. The same
+reasoning applies to the available stock: it is `onHand - reserved`, not a
+column of its own.
+
+**Q: Why does a count not show the quantity the system had?**
+A: Because a count that shows the system quantity is not a count. The counter
+would copy the number instead of counting the shelf, and the count would prove
+nothing. `StockService.countLines` therefore leaves `systemQuantityAtStart` and
+the variance out of the answer while the count is `IN_PROGRESS`, and adds them
+as soon as the count is submitted.
+
+**Q: Why is the price rounded after the discounts and not before the
+multiplication?**
+A: Because the price on the shelf is the price the customer pays. The rule is
+one sentence: **every unit price is rounded to two decimals after the discounts
+are applied, and only then is it multiplied by the quantity.** So a list price
+of 100 with a ten percent discount gives a unit price of 90.00, and three of
+them cost 270.00. The Javadoc of `LinePricing` gives the awkward case: a list
+price of 33.335 with a ten percent discount gives a unit price of 30.00 after
+the rounding, and three of them cost 90.00 and not 90.01. The same rule that
+`Money` already follows is used, so there is only one rounding decision in the
+whole system, and `PriceCalculatorTest.roundsTheUnitPriceFirst` proves it.
+
 ---
 
-## 8. Class diagrams
+## 9. Class diagrams
 
-### 8.1 The common module
+### 9.1 The common module
 
 ```mermaid
 classDiagram
@@ -455,7 +685,7 @@ classDiagram
     HealthController ..> BusinessTime : uses
 ```
 
-### 8.2 The access module
+### 9.2 The access module
 
 The rules of who may do what, and where.
 
@@ -508,7 +738,7 @@ the scope". They ask one object, and that object knows the two rules and the
 error codes that go with them. A service cannot forget to check, because the
 check is a method on the object it already holds.
 
-### 8.3 The request path
+### 9.3 The request path
 
 ```mermaid
 sequenceDiagram
@@ -530,7 +760,7 @@ sequenceDiagram
     Note over F: every log line now carries the correlation id
 ```
 
-### 8.4 The sign in request path
+### 9.4 The sign in request path
 
 ```mermaid
 sequenceDiagram
@@ -568,7 +798,7 @@ proves that the request came from this site and not from another one, so the
 browser may read it and send it back in a header. A request that changes
 something without it is refused with `403 CSRF_TOKEN_INVALID`.
 
-### 8.5 How the modules will fit together
+### 9.5 How the modules will fit together
 
 The business modules are added one prompt at a time. They always follow the
 same shape:
@@ -591,9 +821,99 @@ graph LR
 - A module that only needs to *react* to a change publishes a Spring
   **application event** and listens for it.
 
+### 9.6 The catalog and the pricing
+
+```
+CatalogController ──► CatalogService ──► CategoryRepository
+        │                  │             BrandRepository
+        │                  │             ProductRepository
+        │                  │             ProductVariantRepository
+        │                  │             VariantBarcodeRepository
+        │                  │             VariantPriceHistoryRepository  (append only)
+        │                  │             VariantCostHistoryRepository    (append only)
+        │                  │
+        │                  ├──► AuditService
+        │                  ├──► CatalogRules ──► BarcodeRules
+        │                  ├──► SkuSuggester
+        │                  └──► VariantDeactivationGuard   (one per module)
+        │
+        ├──► CatalogPricingService ──► PromotionService ──► PromotionResolver
+        │            │                 PromotionConflictDetector
+        │            ├──► PriceCalculator ──► LinePricing
+        │            ├──► TaxPolicy
+        │            └──► InventoryService
+        │
+        └──► CatalogImportService ──► CatalogService
+                          │           InventoryService
+                          ├──► CsvReader
+                          └──► CatalogImportValidator
+```
+
+**Why the price calculator is on its own:** the arithmetic is a pure function.
+It knows nothing about Spring, nothing about the database and nothing about
+who is calling, so every rounding case is unit tested without a context. The
+service around it only finds the inputs and assembles the answer.
+
+**Why the import goes through the same services:** a product that was imported
+and a product that was typed in go through exactly the same barcode rule, the
+same price history and the same audit log. The import has no second, weaker
+copy of the rules.
+
+### 9.7 The inventory
+
+```
+InventoryController ──► StockService ──► StockBalanceRepository
+        │                   │          StockMovementRepository   (append only)
+        │                   │          StockAdjustmentRepository
+        │                   │          StockAdjustmentLineRepository
+        │                   │          StockCountRepository
+        │                   │          StockCountLineRepository
+        │                   │          InventoryPolicyRepository
+        │                   │          ProductVariantRepository
+        │                   │          VariantCostHistoryRepository (append only)
+        │                   │
+        │                   ├──► InventoryService (the interface)
+        │                   │         └──► InventoryLedger ──► InventoryBalance
+        │                   ├──► AdjustmentFlagPolicy
+        │                   ├──► LowStockPolicy
+        │                   ├──► StockCountCalculator
+        │                   └──► AuditService
+        │
+        └──► (nothing else: the ledger is the only writer of the stock)
+```
+
+**Why there is an interface and a ledger:** `InventoryService` is the narrow
+door the later phases use. They never touch a balance and never write a
+movement themselves, so the rules stay in one place. `InventoryLedger` is the
+only implementation, and it is the only place that locks the balance row and
+writes the movement.
+
+### 9.8 The transfers
+
+```
+TransferController ──► TransferService ──► StockTransferRepository
+        │                    │             StockTransferItemRepository
+        │                    │             TransferStatusHistoryRepository (append only)
+        │                    │             ProductVariantRepository
+        │                    │             VariantCostHistoryRepository
+        │                    │
+        │                    ├──► TransferTransitions ──► TransferStatus
+        │                    ├──► TransferLine
+        │                    ├──► InventoryService (the ledger)
+        │                    └──► AuditService
+        │
+        └──► (the guard of the catalog module)
+                 OpenTransferVariantGuard ──► VariantDeactivationGuard
+```
+
+**Why the state machine is not in the service:** the transition table is a
+rule about the data, not about HTTP. Keeping it in its own plain Java class
+means it is read in one look, printed in this file, and unit tested without a
+database.
+
 ---
 
-## 9. Code style rules the code follows
+## 10. Code style rules the code follows
 
 - Google Java Format, AOSP style, enforced by Spotless in the `verify` phase.
   Run `backend\mvnw.cmd -f backend\pom.xml spotless:apply` to fix the formatting.

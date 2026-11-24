@@ -154,6 +154,37 @@ describe('RequireSession', () => {
     })
     expect(screen.queryByText('the audit screen')).not.toBeInTheDocument()
   })
+
+  it('shows the waking screen instead of the login page when the backend is unreachable', async () => {
+    // The free backend is asleep. The user is not signed out, so the login
+    // page would be wrong: the waking screen waits and retries.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <SessionProvider>
+          <MemoryRouter initialEntries={['/locations']}>
+            <Routes>
+              <Route path="/login" element={<p>the login page</p>} />
+              <Route
+                path="/locations"
+                element={
+                  <RequireSession>
+                    <p>the locations screen</p>
+                  </RequireSession>
+                }
+              />
+            </Routes>
+          </MemoryRouter>
+        </SessionProvider>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Server is waking up')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('the login page')).not.toBeInTheDocument()
+  })
 })
 
 describe('RequireSignedOut', () => {

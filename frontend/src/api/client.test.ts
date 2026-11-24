@@ -87,4 +87,59 @@ describe('apiRequest', () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  it('treats a gateway status as an unreachable backend', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () =>
+      jsonResponse(
+        {
+          type: 'about:blank',
+          title: 'Backend Unavailable',
+          status: 503,
+          detail: 'The backend could not be reached.',
+          instance: '/api/v1/health',
+          errorCode: 'BACKEND_UNREACHABLE',
+          correlationId: 'abc-123',
+          timestamp: '2026-11-20T12:00:00Z',
+          fieldErrors: {},
+          errors: [],
+        },
+        { status: 503 },
+      )) as typeof fetch
+
+    try {
+      // A 502, 503 or 504 means the backend could not answer at all, so the
+      // user must see the waking screen and not a business error.
+      await expect(apiRequest('/health')).rejects.toBeInstanceOf(BackendUnreachableError)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('keeps a business error an ApiError', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () =>
+      jsonResponse(
+        {
+          type: 'about:blank',
+          title: 'Unauthorized',
+          status: 401,
+          detail: 'Invalid username or password',
+          instance: '/api/v1/auth/login',
+          errorCode: 'INVALID_CREDENTIALS',
+          correlationId: 'abc-123',
+          timestamp: '2026-11-20T12:00:00Z',
+          fieldErrors: {},
+          errors: [],
+        },
+        { status: 401 },
+      )) as typeof fetch
+
+    try {
+      await expect(apiRequest('/auth/login')).rejects.toBeInstanceOf(ApiError)
+      await expect(apiRequest('/auth/login')).rejects.not.toBeInstanceOf(BackendUnreachableError)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })

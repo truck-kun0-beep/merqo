@@ -17,6 +17,7 @@ const GROUP_TITLES: Record<keyof SettingsGroups, string> = {
   BUSINESS: 'Business',
   RECEIPT: 'Receipt',
   TAX: 'Tax',
+  INVENTORY: 'Inventory',
   THRESHOLDS: 'Thresholds',
 }
 

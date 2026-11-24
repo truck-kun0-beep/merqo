@@ -70,3 +70,8 @@ tools/final-audit.ps1
 # The Spring Boot dependency list, downloaded once to check the pinned
 # versions. It is a copy of a file from Maven Central, not part of the project.
 tools/sb-deps-*.pom
+
+# A helper that runs the Maven wrapper with the local JDK and writes the
+# output to a log. The JDK path is the one of this machine, so the script is
+# a local convenience and not part of the project.
+tools/mvn-run.ps1

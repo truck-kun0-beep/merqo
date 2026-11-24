@@ -29,6 +29,27 @@ export const CSRF_HEADER_NAME = 'X-XSRF-TOKEN'
 const REQUEST_TIMEOUT_MS = 20_000
 
 /**
+ * The status codes that mean the backend is not able to answer right now.
+ *
+ * The Cloudflare proxy answers with these codes when the free backend is
+ * asleep, when it did not answer in time or when it answered with its own
+ * gateway error. They are not business errors, so they are reported the same
+ * way as a network failure: the user sees the waking screen and the request
+ * retries on its own.
+ */
+export const GATEWAY_STATUSES = [502, 503, 504]
+
+/**
+ * Whether a status means the backend could not answer right now.
+ *
+ * @param status the status of the answer
+ * @returns {@code true} when the backend was not able to answer
+ */
+export function isGatewayStatus(status: number): boolean {
+  return GATEWAY_STATUSES.includes(status)
+}
+
+/**
  * Reads the CSRF token from the cookie.
  *
  * The browser is the only place that can read the cookie, so this is the one
@@ -64,6 +85,21 @@ export function requiresCsrfToken(method: string): boolean {
 }
 
 /**
+ * Whether a request body is a form.
+ *
+ * A form is uploaded as `multipart/form-data`, and the browser has to write the
+ * boundary itself. So the content type must not be set by hand for a form: the
+ * browser would send the wrong boundary and the backend would not find the
+ * file.
+ *
+ * @param body the body of the request
+ * @returns {@code true} when the body is a form
+ */
+export function isFormData(body: BodyInit | null | undefined): boolean {
+  return typeof FormData !== 'undefined' && body instanceof FormData
+}
+
+/**
  * Performs one request against the Merqo backend.
  *
  * The backend always answers failures with an RFC 7807 problem detail, so this
@@ -81,7 +117,9 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const method = options.method ?? 'GET'
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.body && !isFormData(options.body)
+      ? { 'Content-Type': 'application/json' }
+      : {}),
     ...(options.headers as Record<string, string> | undefined),
   }
 
@@ -110,6 +148,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   if (!response.ok) {
+    // A gateway status is not a business error. The backend was not able to
+    // answer at all, so it is reported the same way as a network failure: the
+    // user sees the waking screen and the request retries on its own.
+    if (isGatewayStatus(response.status)) {
+      throw new BackendUnreachableError(
+        `The server answered with status ${response.status}. It may still be waking up.`,
+      )
+    }
     throw await toApiError(response)
   }
 
@@ -119,6 +165,67 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 
   const text = await response.text()
   return (text ? JSON.parse(text) : undefined) as T
+}
+
+/**
+ * Performs one request against the Merqo backend and reads the answer as text.
+ *
+ * Some answers are not JSON. The template of the import file is CSV text, for
+ * example, so it cannot be parsed as JSON. The request itself is the same as
+ * the one {@link apiRequest} makes: the same base path, the same CSRF token
+ * and the same errors.
+ *
+ * @param path the path below `/api/v1`, for example `/catalog/import/template`
+ * @param options the fetch options
+ * @returns the body of the answer as text
+ */
+export async function apiText(path: string, options: RequestInit = {}): Promise<string> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  const method = options.method ?? 'GET'
+  const headers: Record<string, string> = {
+    Accept: 'text/plain, text/csv, */*',
+    ...(options.body && !isFormData(options.body)
+      ? { 'Content-Type': 'application/json' }
+      : {}),
+    ...(options.headers as Record<string, string> | undefined),
+  }
+
+  if (requiresCsrfToken(method)) {
+    const token = readCsrfToken()
+    if (token) {
+      headers[CSRF_HEADER_NAME] = token
+    }
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_PATH}${path}`, {
+      ...options,
+      method,
+      signal: controller.signal,
+      credentials: 'same-origin',
+      headers,
+    })
+  } catch (error) {
+    throw new BackendUnreachableError(
+      error instanceof Error ? error.message : 'The server is not reachable',
+    )
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  if (!response.ok) {
+    if (isGatewayStatus(response.status)) {
+      throw new BackendUnreachableError(
+        `The server answered with status ${response.status}. It may still be waking up.`,
+      )
+    }
+    throw await toApiError(response)
+  }
+
+  return response.text()
 }
 
 /**

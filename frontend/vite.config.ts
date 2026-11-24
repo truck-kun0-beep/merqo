@@ -27,6 +27,20 @@ export default defineConfig(({ mode }) => {
           target: backendUrl,
           changeOrigin: false,
           secure: false,
+          // The browser must not be able to say where the request came from.
+          // The backend reads the address of the caller from the forwarded
+          // header and counts it in the login throttle, so a header the
+          // browser chose would let anybody lock every account. The dev proxy
+          // drops it the same way the Cloudflare proxy does, and the backend
+          // falls back to the address of the socket.
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyRequest) => {
+              proxyRequest.removeHeader('x-forwarded-for')
+              proxyRequest.removeHeader('x-real-ip')
+              proxyRequest.removeHeader('forwarded')
+              proxyRequest.removeHeader('client-ip')
+            })
+          },
         },
       },
     },

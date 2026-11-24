@@ -9,6 +9,14 @@ export interface SessionState {
   user: CurrentUser | undefined
   /** Whether the first call to the server is still running. */
   isLoading: boolean
+  /**
+   * Whether the backend could not be reached at all.
+   *
+   * The free backend sleeps when it is idle. While it is asleep the session
+   * call fails with a network error or with a gateway status, and the screen
+   * shows the waking screen instead of sending the user to the login page.
+   */
+  isBackendUnreachable: boolean
   /** Whether the signed in user holds a permission. */
   can: (code: string) => boolean
   /** Signs a user in with a username or an email address. */

@@ -38,6 +38,8 @@ public enum SettingKey {
     TAX_RATE_PERCENT("tax.rate_percent", ValueType.DECIMAL, "0"),
     TAX_INCLUSIVE("tax.inclusive", ValueType.BOOLEAN, "false"),
 
+    INVENTORY_DEFAULT_REORDER_POINT("inventory.default_reorder_point", ValueType.INTEGER, "5"),
+
     THRESHOLD_DEAD_STOCK_DAYS("threshold.dead_stock_days", ValueType.INTEGER, "60"),
     THRESHOLD_MARGIN_DROP_POINTS("threshold.margin_drop_points", ValueType.DECIMAL, "5"),
     THRESHOLD_SUPPLIER_PRICE_RISE_PERCENT(
@@ -237,6 +239,7 @@ public enum SettingKey {
         BUSINESS("Business"),
         RECEIPT("Receipt"),
         TAX("Tax"),
+        INVENTORY("Inventory"),
         THRESHOLDS("Thresholds");
 
         private final String label;

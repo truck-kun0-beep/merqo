@@ -77,4 +77,30 @@ describe('HomePage', () => {
       expect(screen.getByText('Server is waking up')).toBeInTheDocument()
     })
   })
+
+  it('shows the waking up screen when the proxy answers with a gateway status', async () => {
+    // A 502, 503 or 504 means the free backend is asleep or busy. It is not a
+    // business error, so the user must see the waking screen and not a red box.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ errorCode: 'BACKEND_UNREACHABLE' }),
+      json: async () => ({ errorCode: 'BACKEND_UNREACHABLE' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Server is waking up')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('The backend could not be reached.')).not.toBeInTheDocument()
+  })
 })

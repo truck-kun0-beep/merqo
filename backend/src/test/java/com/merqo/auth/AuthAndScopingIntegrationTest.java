@@ -8,8 +8,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Instant;
+
 import jakarta.servlet.http.Cookie;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +29,7 @@ import com.merqo.common.web.CsrfTestSupport;
 import com.merqo.location.LocationRepository;
 import com.merqo.user.AppUser;
 import com.merqo.user.AppUserRepository;
+import com.merqo.user.LoginAttemptRepository;
 
 /**
  * The integration test of the login and the scoping rules.
@@ -54,6 +58,9 @@ class AuthAndScopingIntegrationTest {
     /** The name of the cookie that holds the session id. */
     private static final String SESSION_COOKIE = "MERQO_SESSION";
 
+    /** The demo account whose wrong password the suite tries to sign in with. */
+    private static final String DEMO_MANAGER = "demo.manager.dm";
+
     @Autowired private MockMvc mockMvc;
 
     @Autowired private AppUserRepository userRepository;
@@ -61,6 +68,25 @@ class AuthAndScopingIntegrationTest {
     @Autowired private LocationRepository locationRepository;
 
     @Autowired private LocationAssignmentRepository assignmentRepository;
+
+    @Autowired private LoginAttemptRepository attemptRepository;
+
+    @BeforeEach
+    void clearTheThrottleStateOfTheDemoManager() {
+        // A sign in with the wrong password counts against the account, and five of them lock it.
+        // The counter and the lock are cleared before every test, so the suite always starts from
+        // the same state and the answer is the same as on a fresh database. The failed attempts are
+        // removed as well, because the throttle counts the rows of the last fifteen minutes and not
+        // only the counter of the account.
+        AppUser manager = userRepository.findByUsernameIgnoreCase(DEMO_MANAGER).orElseThrow();
+        manager.setFailedLoginCount(0);
+        manager.setLockedUntil(null);
+        userRepository.save(manager);
+
+        attemptRepository
+                .findByIdentifierSince(DEMO_MANAGER, Instant.EPOCH)
+                .forEach(attemptRepository::delete);
+    }
 
     @Test
     @DisplayName("a request without a session is refused with 401")

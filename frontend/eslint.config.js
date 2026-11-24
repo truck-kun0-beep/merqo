@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'node_modules', 'functions'] },
+  { ignores: ['dist', 'coverage', 'node_modules'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
@@ -25,6 +25,8 @@ export default tseslint.config(
     },
   },
   {
+    // The Cloudflare Function runs on a worker, not in a browser, so it gets
+    // the worker globals and none of the React rules.
     files: ['functions/**/*.ts'],
     languageOptions: {
       globals: globals.worker,

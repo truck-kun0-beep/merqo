@@ -91,6 +91,10 @@ export default function LoginPage() {
     return <ServerWakingUp />
   }
 
+  if (demoQuery.error instanceof BackendUnreachableError) {
+    return <ServerWakingUp />
+  }
+
   return (
     <div className="mx-auto flex max-w-md flex-col gap-6 py-8">
       <div className="text-center">

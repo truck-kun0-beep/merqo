@@ -155,6 +155,41 @@ accounts into the database at every start. The login page then shows the demo
 accounts, and one click signs you in. The seed is idempotent, so starting the
 backend twice gives the same rows as starting it once.
 
+### What the demo seed writes in Phase 2
+
+The seed now writes the whole shop, so there is something to look at on the
+first run:
+
+| What | What it holds |
+| --- | --- |
+| The catalogue | The categories, the brands, the products and the variants with their barcodes, their selling prices and their costs. |
+| The opening stock | The stock of the variants at the warehouse and at the branches. |
+| The promotions | The discounts that apply at the counter, the ones for the online channel, and the ones that are scheduled or already over. |
+| The transfers | The transfers in the states `REQUESTED`, `APPROVED`, `DISPATCHED`, `PARTIALLY_RECEIVED` and `RECEIVED`. |
+| The counts | A stock count that has been applied. |
+| The adjustments | A stock adjustment that was flagged as unusual. |
+
+### The demo accounts and the demo locations
+
+| Key | Account | Where |
+| --- | --- | --- |
+| `owner` | Demo Owner | Everywhere. |
+| `manager-dm` | Demo Manager (two branches) | Dhanmondi and Mirpur. |
+| `manager-ut` | Demo Manager Uttara | Uttara only. |
+| `cashier` | Demo Cashier | Dhanmondi. |
+| `orders` | Demo Online Orders | The warehouse. |
+| `warehouse` | Demo Warehouse | The warehouse. |
+
+| Code | Location | Kind |
+| --- | --- | --- |
+| `WH` | Main Warehouse | Warehouse, and the place the online orders are fulfilled from. |
+| `DM` | Dhanmondi | Branch. |
+| `MP` | Mirpur | Branch. |
+| `UT` | Uttara | Branch. |
+
+Sign in as `manager-dm` to see the scoping: the stock of Dhanmondi and Mirpur
+is there, the warehouse stock and Uttara are not.
+
 ### The frontend talks to its own origin
 
 The Vite dev server proxies `/api/*` to `http://localhost:8080`, exactly like
@@ -205,7 +240,29 @@ npm run build
 
 ---
 
-## 8. Useful URLs while developing
+## 8. The business settings
+
+The business values live in the database, not in the code, and the owner edits
+them on the **Settings** screen. Phase 2 added one setting:
+
+| Key | What it means | Type | Default |
+| --- | --- | --- | --- |
+| `inventory.default_reorder_point` | The reorder point a variant uses when it has no policy row of its own. A variant is low on stock when the available stock is at or below it. A reorder point of zero means "do not warn about this variant". | whole number | `5` |
+
+It is edited under **Settings → Inventory**. The owner only may change it, and
+the value takes effect on the very next request, because nothing is cached.
+
+The other Phase 2 values already existed:
+
+| Key | What it means | Default |
+| --- | --- | --- |
+| `tax.rate_percent` | The tax rate of the whole shop. A product with a rate of its own wins over this one. | `0` |
+| `tax.inclusive` | Whether the prices already carry the tax. | `false` |
+| `threshold.unusual_adjustment_value` | The value at cost above which a stock adjustment is flagged as unusual. | `5000.00` |
+
+---
+
+## 9. Useful URLs while developing
 
 | URL | What it shows |
 | --- | --- |
@@ -218,7 +275,7 @@ npm run build
 
 ---
 
-## 9. Common problems
+## 10. Common problems
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the full list. The
 three most common ones:
@@ -237,11 +294,11 @@ PostgreSQL is not running. Check `Get-Service postgresql*` and look at the
 
 ---
 
-## 10. Next step
+## 11. Next step
 
 Sign in on <http://localhost:5173>. With `DEMO_MODE=true` the login page
-shows the demo accounts; one click signs you in. The demo locations and the
-demo accounts are written by the backend itself at every start, so there is no
-separate seed step.
+shows the demo accounts; one click signs you in. The demo locations, the demo
+accounts and the demo catalogue are written by the backend itself at every
+start, so there is no separate seed step.
 
 Then follow [DEPLOY.md](DEPLOY.md) to put Merqo online.

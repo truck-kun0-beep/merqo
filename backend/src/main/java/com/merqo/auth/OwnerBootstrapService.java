@@ -9,15 +9,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.merqo.access.AccountType;
 import com.merqo.audit.AuditAction;
 import com.merqo.audit.AuditEvent;
 import com.merqo.audit.AuditService;
-import com.merqo.common.config.MerqoModeProperties;
 import com.merqo.user.AppUser;
 import com.merqo.user.AppUserRepository;
 import com.merqo.user.PasswordPolicy;
@@ -43,13 +45,25 @@ import com.merqo.user.Username;
  *   <li>The password is never logged.
  * </ul>
  *
+ * <p><b>Why this class uses a {@link TransactionTemplate} instead of {@code @Transactional}.</b>
+ * Two instances may start at the same moment. One of them wins the race and writes the owner; the
+ * other one is refused by the unique index. The loser then has to find out who the winner was. That
+ * lookup must run in a <b>new</b> transaction, because the transaction of the failed insert is
+ * already poisoned: PostgreSQL has aborted it and every further statement in it fails with "the
+ * current transaction is aborted". A method that is annotated with {@code @Transactional} cannot do
+ * that, because the recovery lookup would join the broken transaction. The three small transactions
+ * below are therefore written out explicitly.
+ *
  * <p>OOP concepts demonstrated:
  *
  * <ul>
  *   <li><b>Idempotent operation</b> - running the operation twice gives the same result as running
  *       it once.
- *   <li><b>Dependency injection</b> - the clock and the repositories are injected.
+ *   <li><b>Dependency injection</b> - the clock, the encoder and the transaction manager are
+ *       injected.
  *   <li><b>Observer</b> - the service reacts to the application ready event.
+ *   <li><b>Fail fast and recover</b> - the race is not hidden: the loser says in the log that
+ *       another instance was faster.
  * </ul>
  */
 @Service
@@ -60,9 +74,10 @@ public class OwnerBootstrapService {
     private final AppUserRepository userRepository;
     private final AuditService auditService;
     private final PasswordPolicy passwordPolicy;
-    private final MerqoModeProperties modeProperties;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
+    private final TransactionTemplate writeTransaction;
+    private final TransactionTemplate readTransaction;
 
     private final String initialOwnerUsername;
     private final String initialOwnerEmail;
@@ -75,9 +90,9 @@ public class OwnerBootstrapService {
      * @param userRepository the accounts
      * @param auditService the audit log
      * @param passwordPolicy the password rules
-     * @param modeProperties the mode flags
      * @param passwordEncoder the BCrypt encoder
      * @param clock the clock
+     * @param transactionManager the transaction manager
      * @param initialOwnerUsername the username of the first owner
      * @param initialOwnerEmail the email of the first owner, may be empty
      * @param initialOwnerPassword the password of the first owner, may be empty
@@ -87,9 +102,9 @@ public class OwnerBootstrapService {
             AppUserRepository userRepository,
             AuditService auditService,
             PasswordPolicy passwordPolicy,
-            MerqoModeProperties modeProperties,
             PasswordEncoder passwordEncoder,
             Clock clock,
+            PlatformTransactionManager transactionManager,
             @Value("${merqo.initial-owner-username:owner}") String initialOwnerUsername,
             @Value("${merqo.initial-owner-email:}") String initialOwnerEmail,
             @Value("${merqo.initial-owner-password:}") String initialOwnerPassword,
@@ -98,9 +113,13 @@ public class OwnerBootstrapService {
         this.userRepository = userRepository;
         this.auditService = auditService;
         this.passwordPolicy = passwordPolicy;
-        this.modeProperties = modeProperties;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
+        this.writeTransaction = new TransactionTemplate(transactionManager);
+        this.readTransaction = new TransactionTemplate(transactionManager);
+        // The recovery lookup after a lost race must not join the broken transaction of the failed
+        // insert, so it always runs in a transaction of its own.
+        this.readTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.initialOwnerUsername = initialOwnerUsername;
         this.initialOwnerEmail = initialOwnerEmail;
         this.initialOwnerPassword = initialOwnerPassword;
@@ -126,9 +145,8 @@ public class OwnerBootstrapService {
      *
      * @return the owner, or {@code null} when there is no owner and no configuration for one
      */
-    @Transactional
     public AppUser bootstrapOwner() {
-        AppUser existing = userRepository.findFirstByAccountType(AccountType.OWNER).orElse(null);
+        AppUser existing = findOwner();
         if (existing != null) {
             return resetOwnerPasswordIfRequested(existing);
         }
@@ -143,15 +161,29 @@ public class OwnerBootstrapService {
                             + " set. The application is running in setup mode. See TROUBLESHOOTING.md.");
             return null;
         }
-        if (!Username.isValid(username)) {
+
+        return createOwnerIfAbsent(username, initialOwnerPassword);
+    }
+
+    /**
+     * Creates the owner account when nobody else has created it yet.
+     *
+     * <p>This is the part of the bootstrap that can lose a race, so it is public and can be called
+     * from a test with two threads at the same moment.
+     *
+     * @param rawUsername the username of the owner
+     * @param rawPassword the password of the owner
+     * @return the owner, either the one this call wrote or the one another call wrote first
+     */
+    public AppUser createOwnerIfAbsent(String rawUsername, String rawPassword) {
+        String username = Username.normalize(rawUsername);
+        if (username == null || !Username.isValid(username)) {
             log.error(
-                    "INITIAL_OWNER_USERNAME is not a valid username. The owner was not created."
+                    "The username of the first owner is not valid, so the owner was not created."
                             + " A username has 3 to 40 characters of a-z, 0-9, dot, underscore or hyphen.");
             return null;
         }
-
-        PasswordPolicy.Result result =
-                passwordPolicy.validateForOwner(initialOwnerPassword, username);
+        PasswordPolicy.Result result = passwordPolicy.validateForOwner(rawPassword, username);
         if (!result.valid()) {
             log.error(
                     "The password of the first owner does not follow the password policy, so the owner"
@@ -161,23 +193,13 @@ public class OwnerBootstrapService {
             return null;
         }
 
-        Instant now = Instant.now(clock);
-        AppUser owner =
-                new AppUser(
-                        UUID.randomUUID(),
-                        username,
-                        blankToNull(initialOwnerEmail),
-                        "Owner",
-                        passwordEncoderHash(initialOwnerPassword),
-                        AccountType.OWNER,
-                        now);
-        owner.setMustChangePassword(true);
         try {
-            userRepository.saveAndFlush(owner);
-        } catch (RuntimeException exception) {
+            return writeOwner(username, rawPassword);
+        } catch (DataIntegrityViolationException exception) {
             // Two instances may have started at the same moment. The unique index is the guard and
-            // one of them loses, which is the correct outcome.
-            AppUser winner = userRepository.findFirstByAccountType(AccountType.OWNER).orElse(null);
+            // one of them loses, which is the correct outcome. The lookup runs in a new
+            // transaction, because the transaction of the failed insert is already aborted.
+            AppUser winner = findOwner();
             if (winner != null) {
                 log.info(
                         "Another instance created the owner first. This instance continues without"
@@ -186,18 +208,49 @@ public class OwnerBootstrapService {
             }
             throw exception;
         }
+    }
 
-        auditService.record(
-                new AuditEvent.Builder(AuditAction.OWNER_BOOTSTRAPPED, "app_users")
-                        .entityId(owner.getId())
-                        .actor(owner.getId(), owner.getUsername())
-                        .added("username", owner.getUsername())
-                        .build());
+    /**
+     * Writes the owner account and its audit row in one transaction.
+     *
+     * @param username the username of the owner
+     * @param rawPassword the password of the owner
+     * @return the new owner
+     */
+    private AppUser writeOwner(String username, String rawPassword) {
+        return writeTransaction.execute(
+                status -> {
+                    Instant now = Instant.now(clock);
+                    AppUser owner =
+                            new AppUser(
+                                    UUID.randomUUID(),
+                                    username,
+                                    blankToNull(initialOwnerEmail),
+                                    "Owner",
+                                    passwordEncoder.encode(rawPassword),
+                                    AccountType.OWNER,
+                                    now);
+                    owner.setMustChangePassword(true);
+                    userRepository.saveAndFlush(owner);
 
-        log.info(
-                "The first owner account was created. The owner must change the password at the"
-                        + " first sign in.");
-        return owner;
+                    auditService.record(
+                            new AuditEvent.Builder(AuditAction.OWNER_BOOTSTRAPPED, "app_users")
+                                    .entityId(owner.getId())
+                                    .actor(owner.getId(), owner.getUsername())
+                                    .added("username", owner.getUsername())
+                                    .build());
+                    return owner;
+                });
+    }
+
+    /**
+     * The owner account, if there is one. The lookup runs in a transaction of its own.
+     *
+     * @return the owner, or {@code null}
+     */
+    public AppUser findOwner() {
+        return readTransaction.execute(
+                status -> userRepository.findFirstByAccountType(AccountType.OWNER).orElse(null));
     }
 
     /**
@@ -206,7 +259,6 @@ public class OwnerBootstrapService {
      * @param owner the owner
      * @return the owner
      */
-    @Transactional
     public AppUser resetOwnerPasswordIfRequested(AppUser owner) {
         if (!resetOwnerPasswordOnStart) {
             return owner;
@@ -226,15 +278,23 @@ public class OwnerBootstrapService {
                     result.message());
             return owner;
         }
-        owner.setPasswordHash(passwordEncoderHash(initialOwnerPassword));
-        owner.setMustChangePassword(true);
-        owner.setUpdatedAt(Instant.now(clock));
-        userRepository.save(owner);
-        auditService.record(
-                new AuditEvent.Builder(AuditAction.OWNER_PASSWORD_RESET_BY_ENV, "app_users")
-                        .entityId(owner.getId())
-                        .actor(owner.getId(), owner.getUsername())
-                        .build());
+        writeTransaction.executeWithoutResult(
+                status -> {
+                    AppUser current = userRepository.findById(owner.getId()).orElse(null);
+                    if (current == null) {
+                        return;
+                    }
+                    current.setPasswordHash(passwordEncoder.encode(initialOwnerPassword));
+                    current.setMustChangePassword(true);
+                    current.setUpdatedAt(Instant.now(clock));
+                    userRepository.save(current);
+                    auditService.record(
+                            new AuditEvent.Builder(
+                                            AuditAction.OWNER_PASSWORD_RESET_BY_ENV, "app_users")
+                                    .entityId(current.getId())
+                                    .actor(current.getId(), current.getUsername())
+                                    .build());
+                });
         log.warn(
                 "WARNING: the owner password was reset from the environment. Remove"
                         + " RESET_OWNER_PASSWORD_ON_START from the deployment now. See"
@@ -247,13 +307,8 @@ public class OwnerBootstrapService {
      *
      * @return {@code true} when no owner exists
      */
-    @Transactional(readOnly = true)
     public boolean setupRequired() {
         return userRepository.countByAccountType(AccountType.OWNER) == 0;
-    }
-
-    private String passwordEncoderHash(String rawPassword) {
-        return passwordEncoder.encode(rawPassword);
     }
 
     private String blankToNull(String value) {

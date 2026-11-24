@@ -168,6 +168,26 @@ The Pages Function cannot reach the backend.
 3. Open the Pages Function log: **Cloudflare Pages → your project → Functions
    → Logs**.
 
+The answer of the proxy says what went wrong. Open the developer tools →
+**Network** → the failing request → the body:
+
+| `errorCode` | Meaning |
+| --- | --- |
+| `PROXY_NOT_CONFIGURED` | `API_BASE_URL` is not set on the Pages project. |
+| `BACKEND_UNREACHABLE` | the backend refused the connection. It is asleep or the URL is wrong. |
+| `BACKEND_TIMEOUT` | the backend did not answer in thirty seconds. |
+| `BACKEND_UNAVAILABLE` | the backend answered with a gateway error of its own. |
+
+The `correlationId` in the body ties the answer to the log lines of the
+backend, so the same id can be searched in **Render → Logs**.
+
+### The audit log shows the address of Cloudflare
+
+That is expected. The proxy writes the address Cloudflare saw, not the header
+the browser sent, so the browser cannot lie about where a request came from.
+Somebody who calls the Render URL directly is therefore seen as Cloudflare.
+See [ASSUMPTIONS.md](ASSUMPTIONS.md) A20.
+
 ### The frontend shows a CORS error
 
 `CORS_ORIGINS` on Render must exactly match the Pages URL, including the

@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +44,7 @@ import com.merqo.user.UserTemplateAssignmentRepository;
  * </ul>
  */
 @Component
+@ConditionalOnProperty(name = "merqo.demo-mode", havingValue = "true")
 public class DemoAccountsContributor implements DemoDataContributor {
 
     /** The password hash of the demo accounts. No one knows the password behind it. */

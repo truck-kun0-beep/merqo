@@ -117,9 +117,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const method = options.method ?? 'GET'
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    ...(options.body && !isFormData(options.body)
-      ? { 'Content-Type': 'application/json' }
-      : {}),
+    ...(options.body && !isFormData(options.body) ? { 'Content-Type': 'application/json' } : {}),
     ...(options.headers as Record<string, string> | undefined),
   }
 
@@ -186,9 +184,7 @@ export async function apiText(path: string, options: RequestInit = {}): Promise<
   const method = options.method ?? 'GET'
   const headers: Record<string, string> = {
     Accept: 'text/plain, text/csv, */*',
-    ...(options.body && !isFormData(options.body)
-      ? { 'Content-Type': 'application/json' }
-      : {}),
+    ...(options.body && !isFormData(options.body) ? { 'Content-Type': 'application/json' } : {}),
     ...(options.headers as Record<string, string> | undefined),
   }
 

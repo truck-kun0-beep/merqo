@@ -105,11 +105,7 @@ export default function TransferDetailPage() {
 
   const canApprove = hasLocationPermission(user, 'TRANSFER_APPROVE', transfer.sourceLocationId)
   const canDispatch = hasLocationPermission(user, 'TRANSFER_DISPATCH', transfer.sourceLocationId)
-  const canReceive = hasLocationPermission(
-    user,
-    'TRANSFER_RECEIVE',
-    transfer.destinationLocationId,
-  )
+  const canReceive = hasLocationPermission(user, 'TRANSFER_RECEIVE', transfer.destinationLocationId)
   const canRequestAtDest = hasLocationPermission(
     user,
     'TRANSFER_REQUEST',
@@ -137,7 +133,9 @@ export default function TransferDetailPage() {
       key: 'requested',
       header: 'Requested',
       align: 'right',
-      render: (line) => <span className="tabular-nums">{formatQuantity(line.requestedQuantity)}</span>,
+      render: (line) => (
+        <span className="tabular-nums">{formatQuantity(line.requestedQuantity)}</span>
+      ),
     },
     {
       key: 'approved',
@@ -153,25 +151,33 @@ export default function TransferDetailPage() {
       key: 'dispatched',
       header: 'Dispatched',
       align: 'right',
-      render: (line) => <span className="tabular-nums">{formatQuantity(line.dispatchedQuantity)}</span>,
+      render: (line) => (
+        <span className="tabular-nums">{formatQuantity(line.dispatchedQuantity)}</span>
+      ),
     },
     {
       key: 'received',
       header: 'Received',
       align: 'right',
-      render: (line) => <span className="tabular-nums">{formatQuantity(line.receivedQuantity)}</span>,
+      render: (line) => (
+        <span className="tabular-nums">{formatQuantity(line.receivedQuantity)}</span>
+      ),
     },
     {
       key: 'inTransit',
       header: 'In transit',
       align: 'right',
-      render: (line) => <span className="tabular-nums font-medium">{formatQuantity(line.inTransit)}</span>,
+      render: (line) => (
+        <span className="tabular-nums font-medium">{formatQuantity(line.inTransit)}</span>
+      ),
     },
     {
       key: 'shortage',
       header: 'Shortage',
       align: 'right',
-      render: (line) => <span className="tabular-nums text-rose-700">{formatQuantity(line.shortageQuantity)}</span>,
+      render: (line) => (
+        <span className="tabular-nums text-rose-700">{formatQuantity(line.shortageQuantity)}</span>
+      ),
     },
   ]
 
@@ -194,9 +200,7 @@ export default function TransferDetailPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={transfer.status} />
-            {showApprove ? (
-              <Button onClick={() => setModalMode('approve')}>Approve</Button>
-            ) : null}
+            {showApprove ? <Button onClick={() => setModalMode('approve')}>Approve</Button> : null}
             {showReject ? (
               <Button variant="danger" onClick={() => setModalMode('reject')}>
                 Reject
@@ -205,16 +209,18 @@ export default function TransferDetailPage() {
             {showDispatch ? (
               <Button onClick={() => setModalMode('dispatch')}>Dispatch</Button>
             ) : null}
-            {showReceive ? (
-              <Button onClick={() => setModalMode('receive')}>Receive</Button>
-            ) : null}
+            {showReceive ? <Button onClick={() => setModalMode('receive')}>Receive</Button> : null}
             {showCloseWithShortage ? (
               <Button variant="outline" onClick={() => setModalMode('close')}>
                 Close with shortage
               </Button>
             ) : null}
             {showCancel ? (
-              <Button variant="ghost" className="text-rose-700" onClick={() => setModalMode('cancel')}>
+              <Button
+                variant="ghost"
+                className="text-rose-700"
+                onClick={() => setModalMode('cancel')}
+              >
                 Cancel
               </Button>
             ) : null}
@@ -231,7 +237,10 @@ export default function TransferDetailPage() {
         </div>
       ) : null}
 
-      <section aria-label="Transfer timeline" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+      <section
+        aria-label="Transfer timeline"
+        className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+      >
         <ol className="grid gap-3 sm:grid-cols-4">
           {TIMELINE_STEPS.map((step, index) => {
             const reached = reachedIndex >= index
@@ -464,7 +473,10 @@ function LineQuantityModal({
       <form onSubmit={handleSubmit} className="space-y-4">
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
           {lines.map((line) => (
-            <li key={line.variantId} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <li
+              key={line.variantId}
+              className="flex items-center justify-between gap-3 px-3.5 py-2.5"
+            >
               <div>
                 <span className="font-mono text-xs font-medium text-slate-900">
                   {line.variantId}

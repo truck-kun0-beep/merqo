@@ -177,7 +177,9 @@ export default function UsersPage() {
       <PageHeader
         title="People"
         description="Staff and manager accounts within your branch scope."
-        actions={isOwner ? <Button onClick={() => setCreateOpen(true)}>Add an account</Button> : undefined}
+        actions={
+          isOwner ? <Button onClick={() => setCreateOpen(true)}>Add an account</Button> : undefined
+        }
       />
 
       <form
@@ -209,8 +211,8 @@ export default function UsersPage() {
           role="status"
           className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
         >
-          Temporary password: <code className="font-mono font-semibold">{tempPassword}</code>. It
-          is shown once and the account must change it at the next sign in.
+          Temporary password: <code className="font-mono font-semibold">{tempPassword}</code>. It is
+          shown once and the account must change it at the next sign in.
         </div>
       ) : null}
 
@@ -324,7 +326,9 @@ function CreateUserModal({
           The server generates a temporary password that the user must change at first sign in.
         </p>
 
-        {mutation.isError ? <ErrorState title="Could not create account" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not create account" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>

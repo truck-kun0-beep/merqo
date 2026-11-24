@@ -15,7 +15,10 @@ export function validateBarcodeText(raw: string): string | null {
   if (trimmed.toUpperCase().startsWith('MQ-')) {
     return 'The prefix MQ- is reserved for Merqo document numbers.'
   }
-  if (/\s/.test(trimmed) || [...trimmed].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) {
+  if (
+    /\s/.test(trimmed) ||
+    [...trimmed].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)
+  ) {
     return 'Barcode may not contain spaces or control characters.'
   }
   return null
@@ -118,14 +121,14 @@ export const promotionFormSchema = z
     endsAt: z.string().optional(),
     note: z.string().optional(),
   })
-  .refine(
-    (data) => data.discountType !== 'PERCENT' || Number(data.value) <= 100,
-    { path: ['value'], message: 'Percentage discount cannot exceed 100%.' },
-  )
-  .refine(
-    (data) => data.allLocations || data.locationIds.length > 0,
-    { path: ['locationIds'], message: 'Select at least one location.' },
-  )
+  .refine((data) => data.discountType !== 'PERCENT' || Number(data.value) <= 100, {
+    path: ['value'],
+    message: 'Percentage discount cannot exceed 100%.',
+  })
+  .refine((data) => data.allLocations || data.locationIds.length > 0, {
+    path: ['locationIds'],
+    message: 'Select at least one location.',
+  })
   .refine(
     (data) =>
       !data.startsAt ||
@@ -143,7 +146,10 @@ export const transferRequestSchema = z
       .array(
         z.object({
           variantId: z.string().min(1, 'Variant is required.'),
-          quantity: z.number().int('Must be a whole number.').min(1, 'Quantity must be at least 1.'),
+          quantity: z
+            .number()
+            .int('Must be a whole number.')
+            .min(1, 'Quantity must be at least 1.'),
         }),
       )
       .min(1, 'At least one line is required.'),

@@ -156,11 +156,7 @@ export default function AppShell() {
     .filter((group) => group.items.length > 0)
 
   const roleLabel =
-    user?.accountType === 'OWNER'
-      ? 'Owner'
-      : user?.accountType === 'MANAGER'
-        ? 'Manager'
-        : 'Staff'
+    user?.accountType === 'OWNER' ? 'Owner' : user?.accountType === 'MANAGER' ? 'Manager' : 'Staff'
 
   const sidebarContent = (
     <nav aria-label="Main" className="flex flex-col gap-5 px-3 py-4">

@@ -1,0 +1,33 @@
+@media print {
+  @page {
+    margin: 2mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .merqo-receipt,
+  .merqo-receipt * {
+    visibility: visible;
+  }
+
+  .merqo-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  .merqo-receipt--80mm {
+    width: 80mm !important;
+    max-width: 80mm !important;
+  }
+
+  .merqo-receipt--58mm {
+    width: 58mm !important;
+    max-width: 58mm !important;
+  }
+}

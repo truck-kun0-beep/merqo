@@ -70,14 +70,16 @@ export default function LocationsPage() {
             : 'Branches and warehouses assigned to your account.'
         }
         actions={
-          isOwner ? (
-            <Button onClick={() => setCreateOpen(true)}>Add a location</Button>
-          ) : undefined
+          isOwner ? <Button onClick={() => setCreateOpen(true)}>Add a location</Button> : undefined
         }
       />
 
       {query.isPending ? (
-        <div role="status" aria-label="Loading the locations" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          role="status"
+          aria-label="Loading the locations"
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
           <Skeleton className="h-44 w-full rounded-xl" />
           <Skeleton className="h-44 w-full rounded-xl" />
           <Skeleton className="h-44 w-full rounded-xl" />
@@ -181,7 +183,8 @@ export default function LocationsPage() {
                       className="text-merqo-700 hover:bg-merqo-50"
                       onClick={() => fulfillmentMutation.mutate(location.id)}
                       isLoading={
-                        fulfillmentMutation.isPending && fulfillmentMutation.variables === location.id
+                        fulfillmentMutation.isPending &&
+                        fulfillmentMutation.variables === location.id
                       }
                     >
                       Fulfil online orders
@@ -272,7 +275,9 @@ function CreateLocationModal({ open, onClose }: { open: boolean; onClose: () => 
           <Input value={address} onChange={(e) => setAddress(e.target.value)} />
         </FormField>
 
-        {mutation.isError ? <ErrorState title="Could not create location" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not create location" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>
@@ -336,7 +341,9 @@ function EditLocationModal({
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </FormField>
 
-        {mutation.isError ? <ErrorState title="Could not save location" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not save location" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>

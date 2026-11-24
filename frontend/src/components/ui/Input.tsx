@@ -18,9 +18,7 @@ export function Input({ invalid = false, className = '', ref, ...rest }: InputPr
         'transition-colors outline-none',
         'focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100',
         'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500',
-        invalid
-          ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100'
-          : 'border-slate-300',
+        invalid ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100' : 'border-slate-300',
         className,
       ].join(' ')}
       {...rest}

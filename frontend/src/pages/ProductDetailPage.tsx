@@ -160,9 +160,7 @@ export default function ProductDetailPage() {
       key: 'sellingPrice',
       header: 'Selling price',
       align: 'right',
-      render: (v) => (
-        <MoneyText amount={v.sellingPrice} className="font-medium text-slate-900" />
-      ),
+      render: (v) => <MoneyText amount={v.sellingPrice} className="font-medium text-slate-900" />,
     },
     ...(hasAnyCost
       ? [
@@ -247,9 +245,7 @@ export default function ProductDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             <StatusPill status={product.isActive ? 'ACTIVE' : 'INACTIVE'} />
-            {canCreate ? (
-              <Button onClick={() => setCreateOpen(true)}>Add variant</Button>
-            ) : null}
+            {canCreate ? <Button onClick={() => setCreateOpen(true)}>Add variant</Button> : null}
           </div>
         }
       />
@@ -360,7 +356,9 @@ function VariantBarcodeSummaryCell({
   return (
     <div className="space-y-0.5">
       {primary ? (
-        <span className="block font-mono text-xs font-medium text-slate-800">{primary.barcode}</span>
+        <span className="block font-mono text-xs font-medium text-slate-800">
+          {primary.barcode}
+        </span>
       ) : null}
       {alternates.length > 0 ? (
         <span className="block font-mono text-[11px] text-slate-500">
@@ -432,12 +430,17 @@ function BarcodeDrawer({
       description="Scan or type a barcode and press Enter to assign it."
     >
       {variantQuery.isPending ? <Skeleton className="h-24 w-full" /> : null}
-      {variantQuery.error ? <ErrorState title="Could not load barcodes" error={variantQuery.error} /> : null}
+      {variantQuery.error ? (
+        <ErrorState title="Could not load barcodes" error={variantQuery.error} />
+      ) : null}
 
       {variantQuery.data ? (
         <div className="space-y-5">
           {canEdit ? (
-            <form onSubmit={handleAdd} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <form
+              onSubmit={handleAdd}
+              className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
+            >
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -457,7 +460,11 @@ function BarcodeDrawer({
                 </Button>
               </div>
               <FormField
-                label={kind === 'PRIMARY' ? 'Scan or enter primary barcode' : 'Scan or enter alternate barcode'}
+                label={
+                  kind === 'PRIMARY'
+                    ? 'Scan or enter primary barcode'
+                    : 'Scan or enter alternate barcode'
+                }
                 error={validationError ?? undefined}
               >
                 <div className="flex gap-2">
@@ -591,7 +598,11 @@ function VariantFormModal({
     <Modal open onClose={onClose} title={variant ? `Edit ${variant.sku}` : 'New variant'}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="SKU" hint="Leave blank on create to auto-generate." error={fieldErrors.sku}>
+          <FormField
+            label="SKU"
+            hint="Leave blank on create to auto-generate."
+            error={fieldErrors.sku}
+          >
             <Input value={sku} onChange={(e) => setSku(e.target.value)} />
           </FormField>
           {!variant ? (
@@ -631,7 +642,9 @@ function VariantFormModal({
           ) : null}
         </div>
 
-        {mutation.isError ? <ErrorState title="Could not save variant" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not save variant" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>
@@ -696,11 +709,13 @@ function PriceChangeModal({
     <Modal open onClose={onClose} title={`Change price · ${variant.sku}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-          Current price: <MoneyText amount={variant.sellingPrice} className="font-semibold text-slate-900" />
+          Current price:{' '}
+          <MoneyText amount={variant.sellingPrice} className="font-semibold text-slate-900" />
           {costString !== undefined ? (
             <>
               {' '}
-              · Current cost: <MoneyText amount={costString} className="font-semibold text-slate-900" />
+              · Current cost:{' '}
+              <MoneyText amount={costString} className="font-semibold text-slate-900" />
             </>
           ) : null}
         </div>
@@ -730,7 +745,9 @@ function PriceChangeModal({
           </div>
         ) : null}
 
-        {mutation.isError ? <ErrorState title="Could not change price" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not change price" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>
@@ -792,7 +809,9 @@ function CostChangeModal({
           />
         </FormField>
 
-        {mutation.isError ? <ErrorState title="Could not update cost" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not update cost" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>

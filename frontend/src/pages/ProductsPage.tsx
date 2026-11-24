@@ -103,8 +103,7 @@ export default function ProductsPage() {
   const brands = brandsQuery.data ?? []
   const products = productsQuery.data?.items ?? []
 
-  const categoryName = (id: string | null) =>
-    categories.find((c) => c.id === id)?.name ?? '-'
+  const categoryName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? '-'
   const brandName = (id: string | null) => brands.find((b) => b.id === id)?.name ?? '-'
 
   const columns: DataTableColumn<ProductSummary>[] = [
@@ -196,7 +195,7 @@ export default function ProductsPage() {
         description="Products, variants, barcodes, categories, and brands."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {(canCreate || canEdit) ? (
+            {canCreate || canEdit ? (
               <Link
                 to="/catalog/import"
                 className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 shadow-xs hover:bg-slate-50"
@@ -204,9 +203,7 @@ export default function ProductsPage() {
                 CSV import
               </Link>
             ) : null}
-            {canCreate ? (
-              <Button onClick={() => setCreateOpen(true)}>Add product</Button>
-            ) : null}
+            {canCreate ? <Button onClick={() => setCreateOpen(true)}>Add product</Button> : null}
           </div>
         }
       />
@@ -267,7 +264,10 @@ export default function ProductsPage() {
                       </div>
                       <p className="mt-1 text-xs text-slate-600">
                         List: <MoneyText amount={lookupHit.listPrice} /> · Net:{' '}
-                        <MoneyText amount={lookupHit.netUnitPrice} className="font-semibold text-slate-900" />
+                        <MoneyText
+                          amount={lookupHit.netUnitPrice}
+                          className="font-semibold text-slate-900"
+                        />
                         {lookupHit.cost !== undefined ? (
                           <>
                             {' '}
@@ -557,7 +557,9 @@ function ProductFormModal({
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
         </FormField>
 
-        {mutation.isError ? <ErrorState title="Could not save product" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not save product" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>
@@ -603,8 +605,7 @@ function TaxonomyPanel({
   })
 
   const updateCatMutation = useMutation({
-    mutationFn: () =>
-      updateCategory(editingCategory!.id, { name: editCatName.trim() }),
+    mutationFn: () => updateCategory(editingCategory!.id, { name: editCatName.trim() }),
     onSuccess: () => {
       setEditingCategory(null)
       onChanged()
@@ -691,7 +692,10 @@ function TaxonomyPanel({
 
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
           {categories.map((cat) => (
-            <li key={cat.id} className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-sm">
+            <li
+              key={cat.id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-sm"
+            >
               {editingCategory?.id === cat.id ? (
                 <form
                   className="flex flex-1 items-center gap-2"
@@ -779,13 +783,18 @@ function TaxonomyPanel({
         {createBrandMutation.error || toggleBrandMutation.error || updateBrandMutation.error ? (
           <ErrorState
             title="Brand action failed"
-            error={createBrandMutation.error ?? toggleBrandMutation.error ?? updateBrandMutation.error}
+            error={
+              createBrandMutation.error ?? toggleBrandMutation.error ?? updateBrandMutation.error
+            }
           />
         ) : null}
 
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
           {brands.map((brand) => (
-            <li key={brand.id} className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-sm">
+            <li
+              key={brand.id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-sm"
+            >
               {editingBrand?.id === brand.id ? (
                 <form
                   className="flex flex-1 items-center gap-2"

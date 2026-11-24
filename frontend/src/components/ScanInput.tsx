@@ -36,15 +36,14 @@ export function ScanInput<T>({
   const inputId = useId()
   const errorId = useId()
 
-  const { value, setValue, isScanning, error, clearError, inputRef, handleSubmit } =
-    useScanInput({
-      onScan,
-      onSuccess,
-      scope,
-      locationId,
-      autoFocus,
-      restoreFocusWhen,
-    })
+  const { value, setValue, isScanning, error, clearError, inputRef, handleSubmit } = useScanInput({
+    onScan,
+    onSuccess,
+    scope,
+    locationId,
+    autoFocus,
+    restoreFocusWhen,
+  })
 
   return (
     <form onSubmit={handleSubmit} className={`space-y-1.5 ${className}`} noValidate>

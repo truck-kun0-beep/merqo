@@ -706,3 +706,41 @@ export interface ImportCommitResult {
   skipped: string[]
   totalRows: number
 }
+
+// ---------------------------------------------------------------------------
+// Receipt contract (shared shape for POS & print preview).
+// ---------------------------------------------------------------------------
+
+/**
+ * One line item printed on a POS receipt.
+ */
+export interface ReceiptLineItem {
+  name: string
+  variant: string | null
+  quantity: number
+  unitPrice: string
+  discount: string
+  lineTotal: string
+}
+
+/**
+ * Full payload rendered by the thermal Receipt component.
+ */
+export interface ReceiptData {
+  businessName: string
+  branchName: string
+  branchAddress: string | null
+  branchPhone: string | null
+  receiptNumber: string
+  issuedAt: string
+  cashierName: string
+  lines: ReceiptLineItem[]
+  subtotal: string
+  discount: string
+  tax: string
+  total: string
+  paymentMethod: string
+  paymentReference: string | null
+  footerText: string | null
+  isDuplicate?: boolean
+}

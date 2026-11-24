@@ -53,7 +53,9 @@ export default function AuditPage() {
       header: 'Who',
       sortable: true,
       sortValue: (row) => row.actorUsername ?? 'System',
-      render: (row) => <span className="font-medium text-slate-800">{row.actorUsername ?? 'System'}</span>,
+      render: (row) => (
+        <span className="font-medium text-slate-800">{row.actorUsername ?? 'System'}</span>
+      ),
     },
     {
       key: 'action',

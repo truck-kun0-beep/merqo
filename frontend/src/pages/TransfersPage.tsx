@@ -243,10 +243,7 @@ function RequestTransferModal({
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField label="Source location" required>
-            <Select
-              value={sourceLocationId}
-              onChange={(e) => setSourceLocationId(e.target.value)}
-            >
+            <Select value={sourceLocationId} onChange={(e) => setSourceLocationId(e.target.value)}>
               <option value="">Choose source</option>
               {activeLocations.map((loc) => (
                 <option key={loc.id} value={loc.id}>

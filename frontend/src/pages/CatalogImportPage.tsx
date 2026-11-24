@@ -95,11 +95,7 @@ export default function CatalogImportPage() {
 
       <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField
-            label="CSV file"
-            hint="UTF-8 CSV up to 1 MB and 2,000 rows."
-            required
-          >
+          <FormField label="CSV file" hint="UTF-8 CSV up to 1 MB and 2,000 rows." required>
             <input
               type="file"
               accept=".csv,text/csv"

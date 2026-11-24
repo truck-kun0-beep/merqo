@@ -503,7 +503,10 @@ export function StockCountDetailView({
         confirmLabel="Submit count"
         isConfirming={submitMutation.isPending}
       >
-        <p>Submitting reveals system quantities and variances. You will not be able to edit lines afterward.</p>
+        <p>
+          Submitting reveals system quantities and variances. You will not be able to edit lines
+          afterward.
+        </p>
       </ConfirmDialog>
 
       <ConfirmDialog

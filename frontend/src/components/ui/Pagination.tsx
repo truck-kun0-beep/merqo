@@ -43,7 +43,8 @@ export function Pagination({
         ) : (
           <>
             Page <span className="font-medium text-slate-900">{page + 1}</span> of{' '}
-            <span className="font-medium text-slate-900">{safeTotalPages}</span> ({totalItems} total)
+            <span className="font-medium text-slate-900">{safeTotalPages}</span> ({totalItems}{' '}
+            total)
           </>
         )}
       </p>

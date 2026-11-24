@@ -55,7 +55,5 @@ export function canSeeCosts(user: CurrentUser | undefined): boolean {
   if (!user) {
     return false
   }
-  return user.permissions.some(
-    (perm) => perm.code === 'COST_VIEW' || perm.code === 'PRICE_EDIT',
-  )
+  return user.permissions.some((perm) => perm.code === 'COST_VIEW' || perm.code === 'PRICE_EDIT')
 }

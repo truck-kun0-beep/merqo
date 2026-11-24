@@ -134,7 +134,9 @@ export default function InventoryPage() {
       key: 'reserved',
       header: 'Reserved',
       align: 'right',
-      render: (r) => <span className="tabular-nums text-slate-600">{formatQuantity(r.reserved)}</span>,
+      render: (r) => (
+        <span className="tabular-nums text-slate-600">{formatQuantity(r.reserved)}</span>
+      ),
     },
     {
       key: 'available',
@@ -255,7 +257,8 @@ export default function InventoryPage() {
               </p>
               {total.valueAtCost !== undefined ? (
                 <p className="mt-0.5 text-xs text-slate-600">
-                  Value: <MoneyText amount={total.valueAtCost} className="font-medium text-slate-800" />
+                  Value:{' '}
+                  <MoneyText amount={total.valueAtCost} className="font-medium text-slate-800" />
                 </p>
               ) : null}
             </div>
@@ -353,10 +356,7 @@ export default function InventoryPage() {
         />
       ) : null}
 
-      <MovementHistoryDrawer
-        target={movementsTarget}
-        onClose={() => setMovementsTarget(null)}
-      />
+      <MovementHistoryDrawer target={movementsTarget} onClose={() => setMovementsTarget(null)} />
     </div>
   )
 }
@@ -444,10 +444,7 @@ function AdjustStockModal({
             </Select>
           </FormField>
           <FormField label="Reason" required>
-            <Select
-              value={reason}
-              onChange={(e) => setReason(e.target.value as AdjustmentReason)}
-            >
+            <Select value={reason} onChange={(e) => setReason(e.target.value as AdjustmentReason)}>
               <option value="DAMAGED">Damaged</option>
               <option value="LOST">Lost</option>
               <option value="FOUND">Found</option>
@@ -654,7 +651,9 @@ function PolicyModal({
             {error}
           </p>
         ) : null}
-        {mutation.isError ? <ErrorState title="Could not save policy" error={mutation.error} /> : null}
+        {mutation.isError ? (
+          <ErrorState title="Could not save policy" error={mutation.error} />
+        ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>

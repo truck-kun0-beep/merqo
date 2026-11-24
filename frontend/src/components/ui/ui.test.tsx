@@ -74,9 +74,7 @@ describe('UI design system components', () => {
       },
     ]
 
-    const { rerender } = render(
-      <DataTable columns={columns} rows={rows} getRowKey={(r) => r.id} />,
-    )
+    const { rerender } = render(<DataTable columns={columns} rows={rows} getRowKey={(r) => r.id} />)
 
     // Initial order
     let cells = screen.getAllByRole('cell')
@@ -94,12 +92,7 @@ describe('UI design system components', () => {
 
     // Empty state
     rerender(
-      <DataTable
-        columns={columns}
-        rows={[]}
-        getRowKey={(r) => r.id}
-        emptyTitle="Nothing here"
-      />,
+      <DataTable columns={columns} rows={[]} getRowKey={(r) => r.id} emptyTitle="Nothing here" />,
     )
     expect(screen.getByText('Nothing here')).toBeInTheDocument()
 
@@ -197,9 +190,7 @@ describe('UI design system components', () => {
   it('renders StatusPill and ToastProvider notifications', async () => {
     function Trigger() {
       const { toast } = useToast()
-      return (
-        <Button onClick={() => toast({ title: 'Saved item', tone: 'success' })}>Notify</Button>
-      )
+      return <Button onClick={() => toast({ title: 'Saved item', tone: 'success' })}>Notify</Button>
     }
     render(
       <ToastProvider>

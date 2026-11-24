@@ -290,7 +290,8 @@ function CreatePromotionModal({
 
     const matchingProducts = products.filter((p) => {
       if (selectorMode === 'PRODUCTS') return selectedProductIds.includes(p.id)
-      if (selectorMode === 'CATEGORY') return Boolean(selectedCategoryId && p.categoryId === selectedCategoryId)
+      if (selectorMode === 'CATEGORY')
+        return Boolean(selectedCategoryId && p.categoryId === selectedCategoryId)
       return Boolean(selectedBrandId && p.brandId === selectedBrandId)
     })
 
@@ -311,10 +312,7 @@ function CreatePromotionModal({
     selectedBrandId,
   ])
 
-  const selectedVariantIds = useMemo(
-    () => expandedVariants.map((v) => v.id),
-    [expandedVariants],
-  )
+  const selectedVariantIds = useMemo(() => expandedVariants.map((v) => v.id), [expandedVariants])
 
   const previewConflicts = useMemo(() => {
     const newStart = startsAt ? new Date(startsAt).getTime() : -Infinity
@@ -325,8 +323,7 @@ function CreatePromotionModal({
       if (other.endsAt && new Date(other.endsAt).getTime() <= openedAt) return false
 
       // Scope overlap
-      const scopesOverlap =
-        scope === 'BOTH' || other.scope === 'BOTH' || scope === other.scope
+      const scopesOverlap = scope === 'BOTH' || other.scope === 'BOTH' || scope === other.scope
       if (!scopesOverlap) return false
 
       // Date overlap
@@ -361,8 +358,7 @@ function CreatePromotionModal({
       const cost = Number(v.costPrice)
       const list = Number(v.sellingPrice)
       if (Number.isNaN(cost) || Number.isNaN(list)) return false
-      const net =
-        discountType === 'PERCENT' ? list * (1 - val / 100) : Math.max(0, list - val)
+      const net = discountType === 'PERCENT' ? list * (1 - val / 100) : Math.max(0, list - val)
       return net < cost
     })
   }, [expandedVariants, discountType, value])
@@ -435,10 +431,7 @@ function CreatePromotionModal({
               <Input value={name} onChange={(e) => setName(e.target.value)} />
             </FormField>
             <FormField label="Channel scope" required>
-              <Select
-                value={scope}
-                onChange={(e) => setScope(e.target.value as PromotionScope)}
-              >
+              <Select value={scope} onChange={(e) => setScope(e.target.value as PromotionScope)}>
                 <option value="POS">POS</option>
                 {isOwner ? <option value="ONLINE">Online</option> : null}
                 {isOwner ? <option value="BOTH">Both (POS + Online)</option> : null}
@@ -536,10 +529,7 @@ function CreatePromotionModal({
             ) : null}
 
             {selectorMode === 'BRAND' ? (
-              <Select
-                value={selectedBrandId}
-                onChange={(e) => setSelectedBrandId(e.target.value)}
-              >
+              <Select value={selectedBrandId} onChange={(e) => setSelectedBrandId(e.target.value)}>
                 <option value="">Choose a brand</option>
                 {(brandsQuery.data ?? []).map((b) => (
                   <option key={b.id} value={b.id}>
@@ -578,9 +568,7 @@ function CreatePromotionModal({
                     checked={selectedLocationIds.includes(loc.id)}
                     onChange={(e) =>
                       setSelectedLocationIds((prev) =>
-                        e.target.checked
-                          ? [...prev, loc.id]
-                          : prev.filter((id) => id !== loc.id),
+                        e.target.checked ? [...prev, loc.id] : prev.filter((id) => id !== loc.id),
                       )
                     }
                     label={`${loc.name} (${loc.code})`}
@@ -611,8 +599,8 @@ function CreatePromotionModal({
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
             <p className="font-semibold text-slate-900">{name}</p>
             <p className="mt-1 text-xs text-slate-600">
-              {discountType === 'PERCENT' ? `${value}% off` : `৳ ${value} off`} · Scope: {scope}{' '}
-              · {selectedVariantIds.length} variant(s) ·{' '}
+              {discountType === 'PERCENT' ? `${value}% off` : `৳ ${value} off`} · Scope: {scope} ·{' '}
+              {selectedVariantIds.length} variant(s) ·{' '}
               {allLocations ? 'All locations' : `${selectedLocationIds.length} location(s)`}
             </p>
           </div>
@@ -625,9 +613,7 @@ function CreatePromotionModal({
               <p className="font-semibold">
                 {serverConflictDetail ? 'PROMOTION_CONFLICT: ' : ''}Conflicting promotions detected
               </p>
-              {serverConflictDetail ? (
-                <p className="text-xs">{serverConflictDetail}</p>
-              ) : null}
+              {serverConflictDetail ? <p className="text-xs">{serverConflictDetail}</p> : null}
               {previewConflicts.length > 0 ? (
                 <ul className="list-disc pl-5 text-xs">
                   {previewConflicts.map((c) => (
@@ -641,9 +627,7 @@ function CreatePromotionModal({
               <div className="pt-2">
                 <Checkbox
                   checked={conflictAction === 'END_EXISTING'}
-                  onChange={(e) =>
-                    setConflictAction(e.target.checked ? 'END_EXISTING' : 'REFUSE')
-                  }
+                  onChange={(e) => setConflictAction(e.target.checked ? 'END_EXISTING' : 'REFUSE')}
                   label="End the conflicting promotions now"
                   description="Ends overlapping active/scheduled promotions before saving this one."
                 />

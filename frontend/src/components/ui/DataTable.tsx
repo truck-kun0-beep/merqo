@@ -126,13 +126,7 @@ export function DataTable<T>({
   }
 
   if (sortedRows.length === 0) {
-    return (
-      <EmptyState
-        title={emptyTitle}
-        description={emptyDescription}
-        action={emptyAction}
-      />
-    )
+    return <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
   }
 
   return (

@@ -300,9 +300,7 @@ describe('Phase 2 screens', () => {
     const conflictAlert = await screen.findByRole('alert')
     expect(conflictAlert).toHaveTextContent('Conflicting promotions detected')
     expect(within(conflictAlert).getByText('Existing Winter Promo')).toBeInTheDocument()
-    expect(
-      screen.getByLabelText(/End the conflicting promotions now/),
-    ).toBeInTheDocument()
+    expect(screen.getByLabelText(/End the conflicting promotions now/)).toBeInTheDocument()
   })
 
   it('never renders system quantities in DOM during blind IN_PROGRESS stock count', async () => {
@@ -476,9 +474,7 @@ describe('Phase 2 screens', () => {
           toCreate: 1,
           toUpdate: 0,
           openingStockLines: 1,
-          errors: [
-            { row: 3, message: 'The prefix MQ- is reserved for Merqo document numbers.' },
-          ],
+          errors: [{ row: 3, message: 'The prefix MQ- is reserved for Merqo document numbers.' }],
         },
       },
     })

@@ -75,7 +75,9 @@ export default function PermissionTemplatesPage() {
                   templates={templates}
                   catalogue={catalogue}
                   catalogueError={catalogueQuery.error}
-                  onSaved={() => queryClient.invalidateQueries({ queryKey: ['permission-templates'] })}
+                  onSaved={() =>
+                    queryClient.invalidateQueries({ queryKey: ['permission-templates'] })
+                  }
                 />
               ),
             },
@@ -131,8 +133,7 @@ function PermissionMatrix({
         const current = drafts[template.id] ?? []
         const original = template.permissions
         return (
-          current.length !== original.length ||
-          current.some((code) => !original.includes(code))
+          current.length !== original.length || current.some((code) => !original.includes(code))
         )
       })
       for (const template of changedTemplates) {
@@ -153,8 +154,7 @@ function PermissionMatrix({
         const current = drafts[template.id] ?? []
         const original = template.permissions
         return (
-          current.length !== original.length ||
-          current.some((code) => !original.includes(code))
+          current.length !== original.length || current.some((code) => !original.includes(code))
         )
       }).length,
     [templates, drafts],
@@ -170,11 +170,7 @@ function PermissionMatrix({
     })
   }
 
-  function toggleModuleForTemplate(
-    templateId: string,
-    grantableCodes: string[],
-    checked: boolean,
-  ) {
+  function toggleModuleForTemplate(templateId: string, grantableCodes: string[], checked: boolean) {
     setDrafts((prev) => {
       const existing = prev[templateId] ?? []
       const next = checked
@@ -186,10 +182,7 @@ function PermissionMatrix({
 
   if (catalogueError) {
     return (
-      <ErrorState
-        title="The permission catalogue could not be loaded."
-        error={catalogueError}
-      />
+      <ErrorState title="The permission catalogue could not be loaded." error={catalogueError} />
     )
   }
 
@@ -273,9 +266,7 @@ function PermissionMatrix({
                             <span className="font-mono text-xs font-medium text-slate-800">
                               {permission.code}
                             </span>
-                            {permission.ownerOnly ? (
-                              <Badge tone="neutral">Owner only</Badge>
-                            ) : null}
+                            {permission.ownerOnly ? <Badge tone="neutral">Owner only</Badge> : null}
                           </div>
                           <p className="text-xs text-slate-500">{permission.description}</p>
                         </td>
@@ -291,11 +282,7 @@ function PermissionMatrix({
                                 disabled={permission.ownerOnly || saveMutation.isPending}
                                 aria-label={`${permission.code} for ${template.name}`}
                                 onChange={(e) =>
-                                  togglePermission(
-                                    template.id,
-                                    permission.code,
-                                    e.target.checked,
-                                  )
+                                  togglePermission(template.id, permission.code, e.target.checked)
                                 }
                               />
                             </td>
@@ -331,9 +318,7 @@ function PermissionMatrix({
           Save matrix changes
         </Button>
         <span className="text-xs text-slate-500">
-          {dirtyCount === 0
-            ? 'No unsaved changes.'
-            : `${dirtyCount} template(s) modified.`}
+          {dirtyCount === 0 ? 'No unsaved changes.' : `${dirtyCount} template(s) modified.`}
         </span>
       </div>
     </div>
@@ -472,12 +457,9 @@ function TemplateEditor({
 
       <div className="mt-5 space-y-4">
         {catalogue.map((module) => {
-          const grantableCodes = module.permissions
-            .filter((p) => !p.ownerOnly)
-            .map((p) => p.code)
+          const grantableCodes = module.permissions.filter((p) => !p.ownerOnly).map((p) => p.code)
           const allSelected =
-            grantableCodes.length > 0 &&
-            grantableCodes.every((code) => selected.includes(code))
+            grantableCodes.length > 0 && grantableCodes.every((code) => selected.includes(code))
 
           return (
             <fieldset key={module.code} className="rounded-lg border border-slate-200 p-3.5">
@@ -550,7 +532,11 @@ function TemplateEditor({
       ) : null}
 
       <div className="mt-4">
-        <Button onClick={() => mutation.mutate()} isLoading={mutation.isPending} loadingText="Saving...">
+        <Button
+          onClick={() => mutation.mutate()}
+          isLoading={mutation.isPending}
+          loadingText="Saving..."
+        >
           Save the template
         </Button>
       </div>

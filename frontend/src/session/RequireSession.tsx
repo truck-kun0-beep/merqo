@@ -51,8 +51,8 @@ export default function RequireSession({
       >
         <p className="font-semibold">This screen is not open to your account.</p>
         <p className="mt-1">
-          You do not hold the permission <code className="font-mono">{requiredLabel}</code>. Ask
-          the owner if you need it.
+          You do not hold the permission <code className="font-mono">{requiredLabel}</code>. Ask the
+          owner if you need it.
         </p>
       </div>
     )

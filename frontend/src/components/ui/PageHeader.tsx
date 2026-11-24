@@ -21,7 +21,10 @@ export function PageHeader({ title, description, breadcrumbs, actions }: PageHea
     <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         {breadcrumbs && breadcrumbs.length > 0 ? (
-          <nav aria-label="Breadcrumb" className="mb-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+          <nav
+            aria-label="Breadcrumb"
+            className="mb-1.5 flex items-center gap-1.5 text-xs text-slate-500"
+          >
             {breadcrumbs.map((crumb, index) => (
               <span key={`${crumb.label}-${index}`} className="flex items-center gap-1.5">
                 {index > 0 ? <span aria-hidden="true">/</span> : null}

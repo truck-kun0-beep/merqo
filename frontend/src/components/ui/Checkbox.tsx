@@ -54,7 +54,9 @@ export function Checkbox({
         className={`text-sm leading-snug ${disabled ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-slate-700'}`}
       >
         {label ? <span className="block font-medium text-slate-800">{label}</span> : null}
-        {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
+        {description ? (
+          <span className="mt-0.5 block text-xs text-slate-500">{description}</span>
+        ) : null}
       </label>
     </div>
   )

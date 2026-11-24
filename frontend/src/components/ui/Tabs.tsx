@@ -56,10 +56,7 @@ export function Tabs({
 
   return (
     <div className={className}>
-      <div
-        role="tablist"
-        className="flex flex-wrap gap-1 border-b border-slate-200"
-      >
+      <div role="tablist" className="flex flex-wrap gap-1 border-b border-slate-200">
         {tabs.map((tab, index) => {
           const isSelected = tab.id === active?.id
           return (

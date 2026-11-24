@@ -17,6 +17,7 @@ import InventoryPage from './pages/InventoryPage'
 import StockCountsPage from './pages/StockCountsPage'
 import TransfersPage from './pages/TransfersPage'
 import TransferDetailPage from './pages/TransferDetailPage'
+import DevReceiptPreviewPage from './pages/DevReceiptPreviewPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RequireSession, { RequireSignedOut } from './session/RequireSession'
 
@@ -163,6 +164,9 @@ export default function App() {
             </RequireSession>
           }
         />
+        {import.meta.env.DEV ? (
+          <Route path="dev/receipt-preview" element={<DevReceiptPreviewPage />} />
+        ) : null}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

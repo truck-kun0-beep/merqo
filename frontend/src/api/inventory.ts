@@ -102,7 +102,9 @@ export function fetchLocationTotals(): Promise<LocationTotal[]> {
  * @param filters the filters of the list
  * @returns the page of movements
  */
-export function fetchMovements(filters: MovementFilters = {}): Promise<PageResponse<StockMovementRow>> {
+export function fetchMovements(
+  filters: MovementFilters = {},
+): Promise<PageResponse<StockMovementRow>> {
   return apiRequest<PageResponse<StockMovementRow>>(`/inventory/movements${toQueryString(filters)}`)
 }
 

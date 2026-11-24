@@ -196,7 +196,10 @@ function ProfileSection({
   })
 
   return (
-    <section aria-labelledby="profile-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+    <section
+      aria-labelledby="profile-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
       <h2 id="profile-heading" className="text-sm font-semibold text-slate-900">
         Profile
       </h2>
@@ -224,7 +227,11 @@ function ProfileSection({
       ) : null}
 
       <div className="mt-4">
-        <Button onClick={() => mutation.mutate()} isLoading={mutation.isPending} loadingText="Saving...">
+        <Button
+          onClick={() => mutation.mutate()}
+          isLoading={mutation.isPending}
+          loadingText="Saving..."
+        >
           Save the profile
         </Button>
       </div>
@@ -260,7 +267,10 @@ function TemplatesSection({
     canListTemplates && templatesQuery.data.length > 0 ? templatesQuery.data : account.templates
 
   return (
-    <section aria-labelledby="templates-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+    <section
+      aria-labelledby="templates-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
       <h2 id="templates-heading" className="text-sm font-semibold text-slate-900">
         Permission templates
       </h2>
@@ -324,7 +334,11 @@ function TemplatesSection({
         ) : null}
 
         <div className="mt-4">
-          <Button onClick={() => mutation.mutate()} isLoading={mutation.isPending} loadingText="Saving...">
+          <Button
+            onClick={() => mutation.mutate()}
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
+          >
             Save the templates
           </Button>
         </div>
@@ -390,7 +404,10 @@ function OverridesSection({
   }
 
   return (
-    <section aria-labelledby="overrides-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+    <section
+      aria-labelledby="overrides-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
       <h2 id="overrides-heading" className="text-sm font-semibold text-slate-900">
         Overrides
       </h2>
@@ -476,7 +493,11 @@ function OverridesSection({
         ) : null}
 
         <div className="mt-4">
-          <Button onClick={() => mutation.mutate()} isLoading={mutation.isPending} loadingText="Saving...">
+          <Button
+            onClick={() => mutation.mutate()}
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
+          >
             Save the overrides
           </Button>
         </div>
@@ -518,7 +539,10 @@ function DelegationsSection({
 
   if (!isOwner) {
     return (
-      <section aria-labelledby="delegations-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+      <section
+        aria-labelledby="delegations-heading"
+        className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+      >
         <h2 id="delegations-heading" className="text-sm font-semibold text-slate-900">
           Delegation list
         </h2>
@@ -530,7 +554,10 @@ function DelegationsSection({
   }
 
   return (
-    <section aria-labelledby="delegations-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+    <section
+      aria-labelledby="delegations-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
       <h2 id="delegations-heading" className="text-sm font-semibold text-slate-900">
         Delegation list
       </h2>
@@ -575,7 +602,11 @@ function DelegationsSection({
         ) : null}
 
         <div className="mt-4">
-          <Button onClick={() => mutation.mutate()} isLoading={mutation.isPending} loadingText="Saving...">
+          <Button
+            onClick={() => mutation.mutate()}
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
+          >
             Save the delegation list
           </Button>
         </div>
@@ -624,7 +655,10 @@ function AssignmentsSection({
   const locations = locationsQuery.data ?? []
 
   return (
-    <section aria-labelledby="assignments-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+    <section
+      aria-labelledby="assignments-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
       <h2 id="assignments-heading" className="text-sm font-semibold text-slate-900">
         Where this account works
       </h2>

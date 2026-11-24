@@ -11,13 +11,7 @@ export interface EmptyStateProps {
 /**
  * Calm empty-state card displayed when a list or query returns zero items.
  */
-export function EmptyState({
-  title,
-  description,
-  icon,
-  action,
-  className = '',
-}: EmptyStateProps) {
+export function EmptyState({ title, description, icon, action, className = '' }: EmptyStateProps) {
   return (
     <div
       className={[

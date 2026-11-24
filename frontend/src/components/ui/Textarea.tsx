@@ -8,7 +8,13 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
 /**
  * Multi-line text input with consistent focus and validation states.
  */
-export function Textarea({ invalid = false, className = '', rows = 3, ref, ...rest }: TextareaProps) {
+export function Textarea({
+  invalid = false,
+  className = '',
+  rows = 3,
+  ref,
+  ...rest
+}: TextareaProps) {
   return (
     <textarea
       ref={ref}
@@ -19,9 +25,7 @@ export function Textarea({ invalid = false, className = '', rows = 3, ref, ...re
         'transition-colors outline-none',
         'focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100',
         'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500',
-        invalid
-          ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100'
-          : 'border-slate-300',
+        invalid ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100' : 'border-slate-300',
         className,
       ].join(' ')}
       {...rest}

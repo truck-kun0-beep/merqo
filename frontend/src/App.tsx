@@ -17,6 +17,8 @@ import InventoryPage from './pages/InventoryPage'
 import StockCountsPage from './pages/StockCountsPage'
 import TransfersPage from './pages/TransfersPage'
 import TransferDetailPage from './pages/TransferDetailPage'
+import PosPage from './pages/PosPage'
+import SalesHistoryPage from './pages/SalesHistoryPage'
 import DevReceiptPreviewPage from './pages/DevReceiptPreviewPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RequireSession, { RequireSignedOut } from './session/RequireSession'
@@ -41,6 +43,22 @@ export default function App() {
           element={
             <RequireSession>
               <HomePage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="pos"
+          element={
+            <RequireSession permission="POS_SELL">
+              <PosPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="pos/sales"
+          element={
+            <RequireSession anyPermission={['POS_SELL', 'POS_REFUND', 'POS_REPRINT']}>
+              <SalesHistoryPage />
             </RequireSession>
           }
         />

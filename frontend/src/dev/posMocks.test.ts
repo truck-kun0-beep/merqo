@@ -7,9 +7,9 @@ describe('POS dev mock fetch wrapper', () => {
 
   beforeEach(() => {
     resetPosMockStore()
-    passthroughFetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ ok: true }), { status: 200 }),
-    )
+    passthroughFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     globalThis.fetch = passthroughFetch as unknown as typeof fetch
     uninstall = installPosMocks()
   })

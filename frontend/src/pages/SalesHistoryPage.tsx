@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchLocations } from '../api/business'
 import { createSaleReturn, fetchSale, fetchSales, reprintSaleReceipt } from '../api/pos'
 import type { ReceiptData, SaleReturnRecord, SaleSummary } from '../api/models'
@@ -70,6 +70,7 @@ export default function SalesHistoryPage() {
         page,
         size: 20,
       }),
+    placeholderData: keepPreviousData,
   })
 
   const reprintMutation = useMutation({
@@ -451,6 +452,7 @@ function SaleDetailDrawer({
 
           {showReturnForm && canRefund ? (
             <form
+              noValidate
               onSubmit={handleReturnSubmit}
               className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
             >

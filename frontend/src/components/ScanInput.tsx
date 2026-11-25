@@ -51,30 +51,33 @@ export function ScanInput<T>({
         {label}
       </label>
       <div className="flex items-center gap-2">
-        <Input
-          ref={inputRef}
-          id={inputId}
-          type="text"
-          value={value}
-          disabled={disabled}
-          readOnly={isScanning}
-          invalid={Boolean(error)}
-          aria-describedby={error ? errorId : undefined}
-          placeholder={placeholder}
-          autoComplete="off"
-          onChange={(event) => {
-            if (error) {
-              clearError()
-            }
-            setValue(event.target.value)
-          }}
-        />
+        <div className="min-w-0 flex-1">
+          <Input
+            ref={inputRef}
+            id={inputId}
+            type="text"
+            value={value}
+            disabled={disabled}
+            readOnly={isScanning}
+            invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
+            placeholder={placeholder}
+            autoComplete="off"
+            onChange={(event) => {
+              if (error) {
+                clearError()
+              }
+              setValue(event.target.value)
+            }}
+          />
+        </div>
         <Button
           type="submit"
           variant="outline"
           disabled={disabled}
           isLoading={isScanning}
           loadingText="Finding..."
+          className="shrink-0"
         >
           {submitLabel}
         </Button>

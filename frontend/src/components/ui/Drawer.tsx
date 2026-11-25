@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { trapFocusInContainer } from './focusTrap'
 
 export interface DrawerProps {
   open: boolean
@@ -38,6 +39,8 @@ export function Drawer({
       if (event.key === 'Escape') {
         event.stopPropagation()
         onClose()
+      } else {
+        trapFocusInContainer(event, panelRef.current)
       }
     }
     document.addEventListener('keydown', handleKeyDown)

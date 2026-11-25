@@ -24,11 +24,7 @@ import type {
 } from '../api/models'
 import { ApiError } from '../api/types'
 import { formatMinorUnits, parseMinorUnits } from '../lib/money'
-import {
-  calculateCartTotals,
-  validatePayment,
-  type PosCartLine,
-} from '../lib/posCart'
+import { calculateCartTotals, validatePayment, type PosCartLine } from '../lib/posCart'
 import { filterLocationsByPermission, hasLocationPermission } from '../lib/scopes'
 import { useSession } from '../session/sessionContext'
 import { ScanInput } from '../components/ScanInput'
@@ -200,11 +196,7 @@ export default function PosPage() {
     })
   }
 
-  function updateLineDiscount(
-    variantId: string,
-    type: PosDiscountType | null,
-    value: string,
-  ) {
+  function updateLineDiscount(variantId: string, type: PosDiscountType | null, value: string) {
     setCart((prev) => {
       const next = prev.map((l) =>
         l.variantId === variantId
@@ -342,10 +334,7 @@ export default function PosPage() {
     cardReference: string
   }) {
     setSaleError(null)
-    if (
-      totals.effectiveManualDiscountPercent > maxDiscountPercent &&
-      !canApproveDiscount
-    ) {
+    if (totals.effectiveManualDiscountPercent > maxDiscountPercent && !canApproveDiscount) {
       setPendingPayment(payment)
       setPayOpen(false)
       setPinModalOpen(true)
@@ -381,11 +370,7 @@ export default function PosPage() {
             ) : null}
 
             {lastReceipt ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setReceiptModal(lastReceipt)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setReceiptModal(lastReceipt)}>
                 Last receipt ({lastReceipt.receipt.receiptNumber})
               </Button>
             ) : null}
@@ -431,11 +416,7 @@ export default function PosPage() {
                 Open cash session
               </Button>
             ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCloseSessionModal(true)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setCloseSessionModal(true)}>
                 Close session
               </Button>
             )}
@@ -475,8 +456,8 @@ export default function PosPage() {
       </div>
 
       {/* Main POS Workspace */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-4">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-4">
           <div
             ref={scanContainerRef}
             className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs"
@@ -588,7 +569,7 @@ export default function PosPage() {
                                 aria-label={`Decrease quantity for ${line.sku}`}
                                 onClick={() => updateLineQty(line.variantId, line.quantity - 1)}
                                 disabled={line.quantity <= 1}
-                                className="h-8 w-8 px-0"
+                                className="h-9 w-9 px-0"
                               >
                                 -
                               </Button>
@@ -601,14 +582,14 @@ export default function PosPage() {
                                 onChange={(e) =>
                                   updateLineQty(line.variantId, Number(e.target.value))
                                 }
-                                className="h-8 w-14 text-center"
+                                className="h-9 w-14 text-center"
                               />
                               <Button
                                 size="sm"
                                 variant="outline"
                                 aria-label={`Increase quantity for ${line.sku}`}
                                 onClick={() => updateLineQty(line.variantId, line.quantity + 1)}
-                                className="h-8 w-8 px-0"
+                                className="h-9 w-9 px-0"
                               >
                                 +
                               </Button>
@@ -727,8 +708,9 @@ export default function PosPage() {
                 {totals.effectiveManualDiscountPercent > maxDiscountPercent &&
                 !canApproveDiscount ? (
                   <p className="text-xs font-medium text-amber-800">
-                    Exceeds your {maxDiscountPercent}% limit ({totals.effectiveManualDiscountPercent}%).
-                    Manager PIN will be requested at checkout.
+                    Exceeds your {maxDiscountPercent}% limit (
+                    {totals.effectiveManualDiscountPercent}%). Manager PIN will be requested at
+                    checkout.
                   </p>
                 ) : null}
               </div>
@@ -830,9 +812,7 @@ export default function PosPage() {
             setPinModalOpen(false)
             setPendingPayment(null)
           }}
-          onApprove={(pin) =>
-            saleMutation.mutate({ payment: pendingPayment, managerPin: pin })
-          }
+          onApprove={(pin) => saleMutation.mutate({ payment: pendingPayment, managerPin: pin })}
         />
       ) : null}
 
@@ -930,8 +910,7 @@ function PaymentModal({
   const [cardReference, setCardReference] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const liveChangeMinor =
-    method === 'CASH' ? parseMinorUnits(amountGiven) - totalMinor : 0
+  const liveChangeMinor = method === 'CASH' ? parseMinorUnits(amountGiven) - totalMinor : 0
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -958,7 +937,11 @@ function PaymentModal({
           </p>
         </div>
 
-        <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Payment method">
+        <div
+          className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+          role="radiogroup"
+          aria-label="Payment method"
+        >
           {(['CASH', 'BKASH', 'NAGAD', 'CARD'] as const).map((m) => (
             <Button
               key={m}
@@ -996,10 +979,7 @@ function PaymentModal({
         ) : null}
 
         {method === 'BKASH' || method === 'NAGAD' ? (
-          <FormField
-            label={`${method === 'BKASH' ? 'bKash' : 'Nagad'} TrxID`}
-            required
-          >
+          <FormField label={`${method === 'BKASH' ? 'bKash' : 'Nagad'} TrxID`} required>
             <Input
               autoFocus
               value={trxId}
@@ -1401,11 +1381,7 @@ function SaleLookupAndReturnModal({
               <div className="flex items-center gap-2">
                 <StatusPill status={sale.status} />
                 {canReprint ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onReprint(sale.id)}
-                  >
+                  <Button size="sm" variant="outline" onClick={() => onReprint(sale.id)}>
                     Reprint (DUPLICATE)
                   </Button>
                 ) : null}
@@ -1413,7 +1389,7 @@ function SaleLookupAndReturnModal({
             </div>
 
             {canRefund ? (
-              <form onSubmit={handleReturnSubmit} className="space-y-3">
+              <form noValidate onSubmit={handleReturnSubmit} className="space-y-3">
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                   <table className="min-w-full divide-y divide-slate-200 text-xs">
                     <thead className="bg-slate-50 text-slate-500 uppercase">
@@ -1430,9 +1406,7 @@ function SaleLookupAndReturnModal({
                         return (
                           <tr key={line.id}>
                             <td className="px-3 py-2">
-                              <span className="font-medium text-slate-900">
-                                {line.productName}
-                              </span>
+                              <span className="font-medium text-slate-900">{line.productName}</span>
                               <span className="block font-mono text-slate-500">{line.sku}</span>
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>

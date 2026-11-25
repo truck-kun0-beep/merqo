@@ -115,20 +115,14 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function handlePosOrSalesRequest(
-  url: URL,
-  init?: RequestInit,
-): Promise<Response> {
+async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Response> {
   const path = url.pathname.replace(/^\/api\/v1/, '')
   const method = (init?.method ?? 'GET').toUpperCase()
   const rawBody = typeof init?.body === 'string' ? init.body : undefined
   const body = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {}
 
   // Simulated slow response when ?slow=1 or barcode starts with SLOW
-  if (
-    url.searchParams.get('slow') === '1' ||
-    url.searchParams.get('barcode') === '9999999999991'
-  ) {
+  if (url.searchParams.get('slow') === '1' || url.searchParams.get('barcode') === '9999999999991') {
     await delay(1000)
   }
 
@@ -220,7 +214,11 @@ async function handlePosOrSalesRequest(
   if (method === 'POST' && path === '/sales') {
     const req = body as unknown as CreateSaleRequest
     const openSession = store.sessions.get(req.cashSessionId)
-    if (!openSession || openSession.status !== 'OPEN' || openSession.locationId !== req.locationId) {
+    if (
+      !openSession ||
+      openSession.status !== 'OPEN' ||
+      openSession.locationId !== req.locationId
+    ) {
       return problemResponse(
         409,
         'POS_SESSION_REQUIRED',
@@ -286,9 +284,7 @@ async function handlePosOrSalesRequest(
 
       let lineManualCents = 0
       if (lineReq.manualDiscountType === 'PERCENT' && lineReq.manualDiscountValue) {
-        lineManualCents = Math.round(
-          (afterPromoCents * Number(lineReq.manualDiscountValue)) / 100,
-        )
+        lineManualCents = Math.round((afterPromoCents * Number(lineReq.manualDiscountValue)) / 100)
       } else if (lineReq.manualDiscountType === 'FIXED' && lineReq.manualDiscountValue) {
         lineManualCents = toCents(lineReq.manualDiscountValue)
       }
@@ -330,9 +326,7 @@ async function handlePosOrSalesRequest(
 
     const totalManualCents = manualLineDiscountCents + billDiscountCents
     const effectiveManualPercent =
-      totalListBeforeDiscountCents > 0
-        ? (totalManualCents / totalListBeforeDiscountCents) * 100
-        : 0
+      totalListBeforeDiscountCents > 0 ? (totalManualCents / totalListBeforeDiscountCents) * 100 : 0
 
     if (effectiveManualPercent > DEFAULT_CASHIER_DISCOUNT_LIMIT_PERCENT) {
       if (req.managerPin !== MANAGER_APPROVAL_PIN) {
@@ -347,9 +341,7 @@ async function handlePosOrSalesRequest(
 
     const discountedSubtotalCents = subtotalCents - billDiscountCents
     const adjustedTaxCents =
-      subtotalCents > 0
-        ? Math.round((taxCents * discountedSubtotalCents) / subtotalCents)
-        : 0
+      subtotalCents > 0 ? Math.round((taxCents * discountedSubtotalCents) / subtotalCents) : 0
     const totalCents = discountedSubtotalCents + adjustedTaxCents
 
     if (req.payment.method === 'CASH') {
@@ -649,14 +641,16 @@ function computeBelowCostWarnings(req: PriceCheckRequest) {
     let lineManualCents = 0
     if (lineReq.manualDiscountType === 'PERCENT' && lineReq.manualDiscountValue) {
       lineManualCents = Math.round(
-        ((afterPromoCents * lineReq.quantity) * Number(lineReq.manualDiscountValue)) / 100,
+        (afterPromoCents * lineReq.quantity * Number(lineReq.manualDiscountValue)) / 100,
       )
     } else if (lineReq.manualDiscountType === 'FIXED' && lineReq.manualDiscountValue) {
       lineManualCents = toCents(lineReq.manualDiscountValue)
     }
     const perUnitNetCents = Math.max(
       0,
-      Math.round((afterPromoCents * lineReq.quantity - lineManualCents) / Math.max(1, lineReq.quantity)),
+      Math.round(
+        (afterPromoCents * lineReq.quantity - lineManualCents) / Math.max(1, lineReq.quantity),
+      ),
     )
     const costCents = toCents(variant.costPrice)
     if (perUnitNetCents < costCents) {
@@ -686,11 +680,7 @@ export function installPosMocks(): () => void {
 
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const rawUrl =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const parsed = new URL(rawUrl, 'http://localhost')
 
     if (

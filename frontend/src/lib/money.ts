@@ -50,7 +50,7 @@ export function divideHalfUp(numerator: number, denominator: number): number {
   if (denominator === 0) {
     return 0
   }
-  const sign = (numerator < 0) !== (denominator < 0) ? -1 : 1
+  const sign = numerator < 0 !== denominator < 0 ? -1 : 1
   const num = Math.abs(numerator)
   const den = Math.abs(denominator)
   const quotient = Math.floor(num / den)

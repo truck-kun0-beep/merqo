@@ -302,7 +302,7 @@ export default function ProductsPage() {
                       setCategoryId(e.target.value)
                       setPage(0)
                     }}
-                    className="w-48"
+                    className="w-full sm:w-48"
                   >
                     <option value="">All categories</option>
                     {categories.map((cat) => (
@@ -319,7 +319,7 @@ export default function ProductsPage() {
                       setBrandId(e.target.value)
                       setPage(0)
                     }}
-                    className="w-48"
+                    className="w-full sm:w-48"
                   >
                     <option value="">All brands</option>
                     {brands.map((brand) => (

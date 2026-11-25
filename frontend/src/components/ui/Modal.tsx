@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { trapFocusInContainer } from './focusTrap'
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl'
 
@@ -47,6 +48,8 @@ export function Modal({
       if (event.key === 'Escape') {
         event.stopPropagation()
         onClose()
+      } else {
+        trapFocusInContainer(event, panelRef.current)
       }
     }
     document.addEventListener('keydown', handleKeyDown)

@@ -126,7 +126,7 @@ export default function TransfersPage() {
           aria-label="Filter by transfer status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="w-56"
+          className="w-full sm:w-56"
         >
           {STATUS_FILTERS.map((f) => (
             <option key={f.value} value={f.value}>

@@ -112,9 +112,7 @@ export function calculateCartTotals(
 
   const subtotalMinor = linesSubtotalMinor - billDiscountMinor
   const taxTotalMinor =
-    linesSubtotalMinor > 0
-      ? divideHalfUp(rawTaxTotalMinor * subtotalMinor, linesSubtotalMinor)
-      : 0
+    linesSubtotalMinor > 0 ? divideHalfUp(rawTaxTotalMinor * subtotalMinor, linesSubtotalMinor) : 0
 
   const allInclusive = lines.length > 0 && lines.every((l) => l.taxInclusive)
   const totalMinor = allInclusive ? subtotalMinor : subtotalMinor + taxTotalMinor

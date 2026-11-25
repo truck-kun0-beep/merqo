@@ -78,13 +78,8 @@ export interface SalesFilters {
   size?: number
 }
 
-export function posLookupBarcode(
-  barcode: string,
-  locationId: string,
-): Promise<PosLookupResponse> {
-  return apiRequest<PosLookupResponse>(
-    `/pos/lookup${toQueryString({ barcode, locationId })}`,
-  )
+export function posLookupBarcode(barcode: string, locationId: string): Promise<PosLookupResponse> {
+  return apiRequest<PosLookupResponse>(`/pos/lookup${toQueryString({ barcode, locationId })}`)
 }
 
 export function fetchCurrentCashSession(
@@ -137,9 +132,7 @@ export function fetchSale(id: string): Promise<SaleDetail> {
 }
 
 export function fetchSaleByReceipt(receiptNumber: string): Promise<SaleDetail> {
-  return apiRequest<SaleDetail>(
-    `/sales/by-receipt/${encodeURIComponent(receiptNumber.trim())}`,
-  )
+  return apiRequest<SaleDetail>(`/sales/by-receipt/${encodeURIComponent(receiptNumber.trim())}`)
 }
 
 export function reprintSaleReceipt(id: string): Promise<ReceiptData> {

@@ -688,8 +688,18 @@ function PriceChangeModal({
 
   const mutation = useMutation({
     mutationFn: () => changeVariantPrice(variant.id, { sellingPrice: sellingPrice.trim() }),
-    onSuccess: () => {
-      toast({ title: `Price updated for ${variant.sku}`, tone: 'success' })
+    onSuccess: (updated) => {
+      // The backend compares the new price with the unit cost and says so in the answer. The
+      // warning is only there for a caller who may see the cost, so it is never shown to the rest.
+      if (updated.belowCost) {
+        toast({
+          title: `Price updated for ${variant.sku}`,
+          description: updated.belowCostWarning ?? 'The new price is under the unit cost.',
+          tone: 'warning',
+        })
+      } else {
+        toast({ title: `Price updated for ${variant.sku}`, tone: 'success' })
+      }
       onSaved()
       onClose()
     },

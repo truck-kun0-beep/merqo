@@ -503,3 +503,26 @@ test that reads the newest movement first then read the wrong row.
 **Effect:** the column was added in the Flyway version `V5`, which never edits
 an applied migration. The append only trigger of the table is still in place
 and still blocks every UPDATE and every DELETE.
+
+---
+
+## A34 - The refused answer names the records that are in the way
+
+**Decision:** the answer of a refused request always has the same shape. It
+carries `fieldErrors`, `errors` and `conflicts`. The first two are empty for
+every failure but a validation failure, and the third is empty for every
+failure but a promotion conflict. A promotion conflict names every promotion
+that is in the way, the variants the two promotions share and the SKUs of those
+variants.
+
+**Reason:** the brief asks for the conflicting promotions and the variants on a
+`409 PROMOTION_CONFLICT`, and a shopkeeper needs the SKU of the goods, not the
+id of a variant. The extra field keeps the one error format of the project: the
+frontend has one `ProblemDetail` type and one `ApiError`, and the field is
+empty instead of absent for every other failure.
+
+**Effect:** the new class `com.merqo.common.error.PromotionConflictException`
+extends `ConflictException`, so the status stays 409 and the code stays
+`PROMOTION_CONFLICT`. The frontend field is optional, so an answer from an
+older backend is still read correctly. The list of the conflicts is copied when
+the exception is created, so a reported conflict cannot be changed afterwards.

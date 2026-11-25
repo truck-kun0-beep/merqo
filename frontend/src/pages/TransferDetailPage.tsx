@@ -125,9 +125,18 @@ export default function TransferDetailPage() {
 
   const lineColumns: DataTableColumn<TransferLineRow>[] = [
     {
-      key: 'variantId',
-      header: 'Variant',
-      render: (line) => <span className="font-mono text-xs text-slate-800">{line.variantId}</span>,
+      key: 'sku',
+      header: 'Item',
+      render: (line) => (
+        <div>
+          <span className="font-mono text-xs font-semibold text-slate-900">
+            {line.sku ?? line.variantId}
+          </span>
+          {line.productName ? (
+            <span className="block text-xs text-slate-500">{line.productName}</span>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'requested',

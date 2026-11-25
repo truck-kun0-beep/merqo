@@ -529,4 +529,3 @@ function toUploadBody(file: File): FormData {
   form.append('file', file)
   return form
 }
-

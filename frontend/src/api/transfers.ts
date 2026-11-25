@@ -143,4 +143,3 @@ export function cancelTransfer(id: string): Promise<TransferRow> {
  * The state of a transfer, as the backend names it.
  */
 export type { TransferStatus }
-

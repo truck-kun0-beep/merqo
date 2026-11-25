@@ -2,6 +2,7 @@ package com.merqo.common.web;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.merqo.common.error.BusinessException;
 import com.merqo.common.error.ErrorCodes;
 import com.merqo.common.error.ProblemDetail;
+import com.merqo.common.error.PromotionConflictException;
 
 /**
  * Turns every failure into the one error format the frontend understands.
@@ -87,6 +89,45 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles a promotion that fights the promotions that are already there.
+     *
+     * <p>The answer names every conflicting promotion with the variants they share and the SKUs of
+     * those variants. The browser can therefore show the fight without a second call and without
+     * loading the catalogue first. The status stays 409 and the code stays {@code
+     * PROMOTION_CONFLICT}, so the caller reacts to the same code as before.
+     *
+     * @param exception the raised conflict
+     * @param request the current request
+     * @return the problem detail response with the conflicts
+     */
+    @ExceptionHandler(PromotionConflictException.class)
+    public ResponseEntity<ProblemDetail> handlePromotionConflict(
+            PromotionConflictException exception, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT;
+        log.info(
+                "Promotion conflict: code={} message={}",
+                exception.getErrorCode(),
+                exception.getMessage());
+        List<Map<String, Object>> conflicts = new ArrayList<>();
+        for (PromotionConflictException.Conflict conflict : exception.getConflicts()) {
+            conflicts.add(conflict.toMap());
+        }
+        ProblemDetail problem =
+                ProblemDetail.withConflicts(
+                        PROBLEM_TYPE_BASE
+                                + exception.getErrorCode().toLowerCase(java.util.Locale.ROOT),
+                        status.getReasonPhrase(),
+                        status.value(),
+                        exception.getMessage(),
+                        request.getRequestURI(),
+                        exception.getErrorCode(),
+                        currentCorrelationId(),
+                        Instant.now(clock),
+                        conflicts);
+        return ResponseEntity.status(status).body(problem);
+    }
+
+    /**
      * Handles failed bean validation on request bodies and query parameters.
      *
      * @param exception the raised validation exception
@@ -112,6 +153,7 @@ public class GlobalExceptionHandler {
                         currentCorrelationId(),
                         Instant.now(clock),
                         fieldErrors,
+                        List.of(),
                         List.of());
         return ResponseEntity.status(status).body(problem);
     }

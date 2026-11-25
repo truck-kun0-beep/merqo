@@ -476,8 +476,42 @@ public class StockService {
         return adjustmentLineRepository.findByAdjustmentId(adjustmentId);
     }
 
-    // ---- Policies -----------------------------------------------------------
+    /**
+     * One adjustment, when the caller may see it.
+     *
+     * <p>An adjustment belongs to one location. A caller who may not view that location gets a 404,
+     * so the caller cannot even learn that the adjustment exists.
+     *
+     * @param context the caller
+     * @param adjustmentId the adjustment
+     * @return the adjustment
+     */
+    @Transactional(readOnly = true)
+    public StockAdjustment adjustmentOf(AccessContext context, UUID adjustmentId) {
+        StockAdjustment adjustment =
+                adjustmentRepository
+                        .findById(adjustmentId)
+                        .orElseThrow(
+                                () -> new NotFoundException("The requested record was not found."));
+        Set<UUID> visible = visibleLocations(context, Permission.INVENTORY_VIEW);
+        if (!visible.contains(adjustment.getLocationId())) {
+            throw new NotFoundException("The requested record was not found.");
+        }
+        return adjustment;
+    }
 
+    /**
+     * The SKU of a variant, so the screen shows a name a shopkeeper recognises.
+     *
+     * @param variantId the variant
+     * @return the SKU, or {@code null} when the variant is gone
+     */
+    @Transactional(readOnly = true)
+    public String skuOf(UUID variantId) {
+        return variantRepository.findById(variantId).map(ProductVariant::getSku).orElse(null);
+    }
+
+    // ---- Policies -----------------------------------------------------------
     /**
      * Changes the reorder point of a variant at a location.
      *
@@ -748,7 +782,7 @@ public class StockService {
                 throw new ConflictException(
                         ErrorCodes.INSUFFICIENT_STOCK,
                         "The correction of the SKU "
-                                + skuOf(line.getVariantId())
+                                + skuOfLine(line.getVariantId())
                                 + " would take the stock below the reserved quantity.");
             }
             int correction =
@@ -990,7 +1024,7 @@ public class StockService {
         return product != null && categoryId.equals(product.getCategoryId());
     }
 
-    private String skuOf(UUID variantId) {
+    private String skuOfLine(UUID variantId) {
         return variantRepository.findById(variantId).map(ProductVariant::getSku).orElse("unknown");
     }
 

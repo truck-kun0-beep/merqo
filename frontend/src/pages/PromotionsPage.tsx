@@ -16,7 +16,7 @@ import type {
   PromotionSummary,
   VariantSummary,
 } from '../api/models'
-import { ApiError } from '../api/types'
+import { ApiError, type PromotionConflictDetail } from '../api/types'
 import { filterLocationsByPermission } from '../lib/scopes'
 import { promotionFormSchema } from '../lib/validation'
 import { useSession } from '../session/sessionContext'
@@ -261,6 +261,7 @@ function CreatePromotionModal({
   const [conflictAction, setConflictAction] = useState<ConflictAction>('REFUSE')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [serverConflictDetail, setServerConflictDetail] = useState<string | null>(null)
+  const [serverConflicts, setServerConflicts] = useState<PromotionConflictDetail[]>([])
 
   const productsQuery = useQuery({
     queryKey: ['catalog', 'products', 'selector'],
@@ -386,6 +387,7 @@ function CreatePromotionModal({
     onError: (caught) => {
       if (caught instanceof ApiError && caught.errorCode === 'PROMOTION_CONFLICT') {
         setServerConflictDetail(caught.message)
+        setServerConflicts(caught.conflicts)
       }
     },
   })
@@ -614,6 +616,18 @@ function CreatePromotionModal({
                 {serverConflictDetail ? 'PROMOTION_CONFLICT: ' : ''}Conflicting promotions detected
               </p>
               {serverConflictDetail ? <p className="text-xs">{serverConflictDetail}</p> : null}
+              {serverConflicts.length > 0 ? (
+                <ul className="list-disc pl-5 text-xs">
+                  {serverConflicts.map((c) => (
+                    <li key={c.id}>
+                      <strong>{c.name}</strong>
+                      {c.skus.length > 0 ? (
+                        <span className="font-mono"> · {c.skus.join(', ')}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {previewConflicts.length > 0 ? (
                 <ul className="list-disc pl-5 text-xs">
                   {previewConflicts.map((c) => (

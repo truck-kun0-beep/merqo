@@ -84,6 +84,7 @@ public class ProblemResponseWriter {
         problem.put("timestamp", Instant.now(clock).toString());
         problem.put("fieldErrors", Map.of());
         problem.put("errors", List.of());
+        problem.put("conflicts", List.of());
 
         objectMapper.writeValue(response.getOutputStream(), problem);
     }

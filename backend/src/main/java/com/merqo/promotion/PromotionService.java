@@ -28,10 +28,10 @@ import com.merqo.catalog.domain.DiscountType;
 import com.merqo.catalog.domain.PromotionConflictDetector;
 import com.merqo.catalog.domain.PromotionResolver;
 import com.merqo.catalog.domain.Scope;
-import com.merqo.common.error.ConflictException;
 import com.merqo.common.error.ErrorCodes;
 import com.merqo.common.error.ForbiddenException;
 import com.merqo.common.error.NotFoundException;
+import com.merqo.common.error.PromotionConflictException;
 import com.merqo.common.error.ValidationException;
 import com.merqo.common.money.Money;
 import com.merqo.location.Location;
@@ -330,11 +330,11 @@ public class PromotionService {
                     }
                 }
             } else {
-                throw new ConflictException(
-                        ErrorCodes.PROMOTION_CONFLICT,
+                throw new PromotionConflictException(
                         "This promotion fights "
                                 + conflicts.size()
-                                + " promotion(s) that are already there.");
+                                + " promotion(s) that are already there.",
+                        describeConflicts(conflicts));
             }
         }
 
@@ -482,6 +482,36 @@ public class PromotionService {
     }
 
     // ---- Helpers ------------------------------------------------------------
+
+    /**
+     * The conflicts in a shape the browser can show.
+     *
+     * <p>Every conflict names the promotion that is in the way, the variants the two promotions
+     * have in common and the SKUs of those variants. The SKUs are what a shopkeeper recognises, so
+     * the browser does not have to load the catalogue to show the fight.
+     *
+     * @param conflicts the conflicts the detector found
+     * @return the conflicts, ready to be put in the answer
+     */
+    private List<PromotionConflictException.Conflict> describeConflicts(
+            List<PromotionConflictDetector.Conflict> conflicts) {
+        List<PromotionConflictException.Conflict> described = new ArrayList<>();
+        for (PromotionConflictDetector.Conflict conflict : conflicts) {
+            com.merqo.catalog.domain.Promotion other = conflict.second();
+            List<String> variantIds = new ArrayList<>();
+            List<String> skus = new ArrayList<>();
+            for (UUID variantId : conflict.sharedVariants()) {
+                variantIds.add(variantId.toString());
+                productVariantRepository
+                        .findById(variantId)
+                        .ifPresent(variant -> skus.add(variant.getSku()));
+            }
+            described.add(
+                    new PromotionConflictException.Conflict(
+                            other.getId().toString(), other.getName(), variantIds, skus));
+        }
+        return described;
+    }
 
     private void validate(PromotionRequest request) {
         if (request.name() == null || request.name().trim().isEmpty()) {

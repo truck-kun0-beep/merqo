@@ -21,7 +21,9 @@ comment that says what it is responsible for and which concept it demonstrates.
 | **Inheritance** | `BusinessException` → `NotFoundException`, `ConflictException`, `ValidationException`, `ForbiddenException` | All expected failures share one parent, so the error handler treats them uniformly. The subclasses only add their own status and code. |
 | **Polymorphism** | `com.merqo.common.web.GlobalExceptionHandler` | Several `@ExceptionHandler` methods, each handling a different exception type. Spring calls the most specific one at runtime. |
 | **Interfaces** | Spring's `SecurityFilterChain`, `WebMvcConfigurer`, `Filter` | The framework defines the contract; our classes implement it. The framework never needs to know our class names. |
-| **Composition** | `ProblemDetail` holds `fieldErrors` and `errors` instead of flattening everything into one string | Small objects are combined into a bigger object instead of one giant class doing everything. |
+| **Composition** | `ProblemDetail` holds `fieldErrors`, `errors` and `conflicts` instead of flattening everything into one string | Small objects are combined into a bigger object instead of one giant class doing everything. |
+| **Inheritance** | `ConflictException` → `PromotionConflictException` | A promotion conflict is a conflict, so it keeps the 409 status and the stable code of its parent and only adds the list of the promotions it fights. |
+| **Records** | `PromotionConflictException.Conflict` | One promotion that is in the way, with the variants it shares with the new one. The lists are copied, so nobody can change a reported conflict afterwards. |
 | **Composition** | `CorrelationIdFilter` + `CorrelationIdFilterConfiguration` | The filter does the work; the configuration decides where it runs. Neither one has to know the other in detail. |
 | **Immutability** | `Money` (all methods return a new instance), `ProblemDetail` (a record) | Once a value exists it cannot change. That removes a whole class of bugs where two threads change the same amount at the same time. |
 | **Records** | `ProblemDetail` | A short, unchangeable carrier for data. Used for DTOs and value objects. |
@@ -175,7 +177,8 @@ report "it failed" and the support person can find the exact request.
 public record ProblemDetail(
     String type, String title, int status, String detail, String instance,
     String errorCode, String correlationId, Instant timestamp,
-    Map<String, String> fieldErrors, List<String> errors) {
+    Map<String, String> fieldErrors, List<String> errors,
+    List<Map<String, Object>> conflicts) {
 ```
 
 A record is immutable by definition, which is exactly what an error payload
@@ -183,9 +186,19 @@ needs. It also composes smaller pieces (the field errors, the extra errors)
 instead of flattening everything into one long string, so the frontend can show
 "the branch field is required" next to the right input.
 
+**The `conflicts` list.** Every failure has an empty one, so the frontend has
+one shape and not two. A promotion conflict is the one failure that has to name
+what it fights, so the answer carries the conflicting promotions with the
+variants they share and the SKUs of those variants. The browser can therefore
+show the fight without a second call and without loading the catalogue first.
+The two factory methods keep the rule in one place: `ProblemDetail.of` for the
+ordinary failures and `ProblemDetail.withConflicts` for the one that names
+records.
+
 The frontend mirrors it exactly in
 `frontend/src/api/types.ts` as the `ProblemDetail` interface, and turns it into
-an `ApiError` with a stable `errorCode`.
+an `ApiError` with a stable `errorCode`. The `conflicts` field of the frontend
+type is optional, so an answer from an older backend is still read correctly.
 
 ---
 
@@ -296,6 +309,8 @@ Spring in them, and they are unit tested with `new` and no context.
 | `backend/src/test/java/com/merqo/catalog/domain/CsvImportTest.java` | The awkward CSV cases: quotes, commas inside quotes, the byte order mark and empty lines. |
 | `backend/src/test/java/com/merqo/inventory/domain/InventoryDomainTest.java` | The invariants of the balance: nothing negative, the reservation never exceeds the stock, the available stock is the difference. |
 | `backend/src/test/java/com/merqo/transfer/domain/TransferDomainTest.java` | Every transition of the table, the valid ones and the invalid ones, and the quantity rules of a line. |
+| `backend/src/test/java/com/merqo/promotion/PromotionIntegrationTest.java` | A fighting promotion is refused with 409 and the answer names the promotion that is in the way and the SKUs of the goods they share. The caller may end the old promotions instead, and a manager may not make an online promotion. |
+| `backend/src/test/java/com/merqo/inventory/InventoryIntegrationTest.java` | An adjustment answer carries the SKU of every line, and an adjustment of another branch is not found. |
 
 ---
 
@@ -522,6 +537,18 @@ is also a separate class because the answer is a `Conflict` record that carries
 both promotions and the variants they share, so the message can name them
 instead of saying "there is a conflict".
 
+**Q: How does the browser know which promotions are in the way?**
+A: The answer of the refused request carries them. `PromotionService` turns the
+conflicts of `PromotionConflictDetector` into
+`PromotionConflictException.Conflict` records, and the record names the
+promotion that is in the way, the variants the two promotions share and the SKUs
+of those variants. The global handler puts the list in the `conflicts` field of
+the problem detail, so the screen shows the fight without a second call and
+without loading the catalogue first. The status stays 409 and the code stays
+`PROMOTION_CONFLICT`, so the caller reacts to the same code as before. The
+integration test `PromotionIntegrationTest.aFightingPromotionIsRefusedWithTheConflictsAndTheirSkus`
+proves that the answer names the promotion and its SKUs.
+
 **Q: Why is the cost field absent instead of zero for a cashier?**
 A: Because zero is a number, and a number is read as a fact. If the cost were
 zero for everybody who may not see it, a screen could not tell the difference
@@ -679,6 +706,8 @@ classDiagram
     BusinessException <|-- ConflictException
     BusinessException <|-- ValidationException
     BusinessException <|-- ForbiddenException
+    ConflictException <|-- PromotionConflictException
+    PromotionConflictException ..> Conflict : holds
     GlobalExceptionHandler ..> BusinessException : handles
     GlobalExceptionHandler ..> ProblemDetail : builds
     GlobalExceptionHandler ..> CorrelationIdFilter : reads the id from

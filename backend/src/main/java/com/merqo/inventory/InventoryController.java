@@ -169,18 +169,23 @@ public class InventoryController {
     /**
      * One adjustment with its lines.
      *
+     * <p>The answer holds the whole document: the number, the reason, the note, whether it was
+     * flagged, and every line with its SKU. The screen shows the document, so it needs all of it.
+     *
      * @param id the adjustment
      * @return the adjustment
      */
     @GetMapping("/adjustments/{id}")
     @Operation(summary = "One adjustment with its lines")
     public Map<String, Object> getAdjustment(@PathVariable UUID id) {
-        currentUserService.requireAccessContext();
-        Map<String, Object> body = new LinkedHashMap<>();
+        AccessContext context = currentUserService.requireAccessContext();
+        StockAdjustment adjustment = stockService.adjustmentOf(context, id);
+        Map<String, Object> body = toAdjustment(adjustment);
         List<Map<String, Object>> lines = new ArrayList<>();
         for (StockAdjustmentLine line : stockService.linesOf(id)) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("variantId", line.getVariantId());
+            entry.put("sku", stockService.skuOf(line.getVariantId()));
             entry.put("quantityDelta", line.getQuantityDelta());
             entry.put("unitCost", line.getUnitCost());
             entry.put("valueAtCost", line.getValueAtCost());

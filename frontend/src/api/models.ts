@@ -333,6 +333,10 @@ export interface VariantSummary {
   isActive: boolean
   /** The cost price, only present for a caller who may see the costs. */
   costPrice?: string
+  /** Whether the price is under the unit cost. Only present for a cost-visible caller. */
+  belowCost?: boolean
+  /** The sentence that explains the below-cost warning, when there is one. */
+  belowCostWarning?: string
 }
 
 /**
@@ -564,6 +568,8 @@ export interface StockAdjustmentRow {
  */
 export interface AdjustmentLineRow {
   variantId: string
+  /** The SKU of the goods, so the screen shows a name a shopkeeper recognises. */
+  sku: string | null
   quantityDelta: number
   unitCost: string | null
   valueAtCost: string | null
@@ -648,6 +654,10 @@ export interface TransferRow {
 export interface TransferLineRow {
   id: string
   variantId: string
+  /** The SKU of the goods, so the screen shows a name a shopkeeper recognises. */
+  sku: string | null
+  /** The name of the product with its colour and size, when the variant is still there. */
+  productName: string | null
   requestedQuantity: number
   approvedQuantity: number | null
   dispatchedQuantity: number

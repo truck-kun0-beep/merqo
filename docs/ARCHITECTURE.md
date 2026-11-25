@@ -122,6 +122,7 @@ common/
 │   ├── BusinessException.java  abstract parent of every expected failure
 │   ├── NotFoundException.java
 │   ├── ConflictException.java
+│   ├── PromotionConflictException.java  a conflict that names what it fights
 │   ├── ValidationException.java
 │   ├── ForbiddenException.java
 │   ├── UnauthenticatedException.java
@@ -330,7 +331,7 @@ Exception
   ▼
 GlobalExceptionHandler      ← turns it into one RFC 7807 problem detail
   ▼
-Browser                     ← {errorCode, detail, correlationId, fieldErrors, ...}
+Browser                     ← {errorCode, detail, correlationId, fieldErrors, conflicts, ...}
 ```
 
 ---

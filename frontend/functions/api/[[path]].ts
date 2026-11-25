@@ -217,11 +217,28 @@ function buildUpstreamHeaders(request: Request, incomingUrl: URL): Headers {
  * @returns the headers of the answer to the browser
  */
 function buildResponseHeaders(upstreamHeaders: Headers): Headers {
-  const headers = new Headers(upstreamHeaders)
+  const headers = new Headers()
 
-  for (const name of DROPPED_RESPONSE_HEADERS) {
-    headers.delete(name)
+  // Every Set-Cookie header is copied on its own. The answer of a sign in
+  // carries two of them: the session cookie and the CSRF cookie. If they were
+  // joined into one header, the browser would keep only the first one and
+  // every request that changes something would be refused with a 403.
+  const setCookies = upstreamHeaders.getSetCookie()
+  for (const cookie of setCookies) {
+    headers.append('Set-Cookie', cookie)
   }
+
+  // Every other header is copied as it is.
+  upstreamHeaders.forEach((value, name) => {
+    const lower = name.toLowerCase()
+    if (lower === 'set-cookie') {
+      return
+    }
+    if (DROPPED_RESPONSE_HEADERS.includes(lower)) {
+      return
+    }
+    headers.append(name, value)
+  })
 
   headers.set('cache-control', 'no-store')
   // The browser must be able to read the correlation id for support requests.

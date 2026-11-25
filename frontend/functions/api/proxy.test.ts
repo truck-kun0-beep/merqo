@@ -141,4 +141,46 @@ describe('the Cloudflare proxy', () => {
       vi.unstubAllGlobals()
     }
   })
+
+  it('keeps every Set-Cookie header of the answer on its own', async () => {
+    // The answer of a sign in carries two cookies: the session cookie and the
+    // CSRF cookie. If they were joined into one header, the browser would keep
+    // only the first one and every request that changes something would be
+    // refused with a 403. This is the bug that broke the live site.
+    const upstream = new Headers()
+    upstream.append('Set-Cookie', 'MERQO_SESSION=abc; Path=/; HttpOnly; SameSite=Lax')
+    upstream.append('Set-Cookie', 'XSRF-TOKEN=def; Path=/')
+
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200, headers: upstream }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const response = await onRequest({ request: browserRequest(), env: ENV })
+
+      const cookies = response.headers.getSetCookie()
+      expect(cookies).toHaveLength(2)
+      expect(cookies[0]).toContain('MERQO_SESSION=abc')
+      expect(cookies[1]).toContain('XSRF-TOKEN=def')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps the cookies of the answer when the backend sends only one', async () => {
+    const upstream = new Headers()
+    upstream.append('Set-Cookie', 'MERQO_SESSION=abc; Path=/; HttpOnly; SameSite=Lax')
+
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200, headers: upstream }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const response = await onRequest({ request: browserRequest(), env: ENV })
+
+      const cookies = response.headers.getSetCookie()
+      expect(cookies).toHaveLength(1)
+      expect(cookies[0]).toContain('MERQO_SESSION=abc')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })

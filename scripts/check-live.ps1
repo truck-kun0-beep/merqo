@@ -1,16 +1,32 @@
 # =============================================================================
 # Merqo - check the live deployment.
 #
-# The script answers one question: does the deployed site work?
+# The script answers one question: does the deployed site work, all the way
+# through the requests that change something?
 #
 # It checks, in order:
 #   1. the frontend answers and serves the app,
 #   2. the backend answers the ping and the database is reachable,
 #   3. the frontend proxy forwards /api to the backend (one origin),
 #   4. demo mode is on and the demo accounts are there,
-#   5. a demo login works: the session cookie is written and it is accepted.
+#   5. the demo login works and hands out both cookies,
+#   6. GET /auth/me is accepted,
+#   7. a user is created (the first POST after the login),
+#   8. that user is deactivated (a second POST),
+#   9. the sign out works (a third POST).
 #
-# It never writes anything. It only reads and signs in as a demo account.
+# Steps 7 to 9 are the ones that broke on the live site: the sign in worked,
+# but every request that changes something was refused with a 403, because the
+# answer to the sign in did not hand out the CSRF cookie.
+#
+# <b>The jar is strict.</b> After the sign in the script builds a fresh jar that
+# holds only the cookies of the sign in answer, and every later request travels
+# with that jar and nothing else. A browser behaves the same way when the
+# cookie of the session is replaced, and the script therefore catches the bug
+# even on a browser that still had an old CSRF cookie lying around.
+#
+# It never prints a secret: no cookie value, no token, no password. It only
+# prints the names of the cookies it found.
 #
 # Usage:
 #   scripts\check-live.ps1
@@ -30,7 +46,9 @@ param(
     # The address of the deployed frontend. The default is the Pages URL.
     [string] $FrontendUrl = 'https://merqo.pages.dev',
 
-    # The address of the deployed backend. The default is the Render URL.
+    # The address of the deployed backend. The default is the Render URL. The
+    # direct check is only a diagnosis: the proxy check below is the one that
+    # matters, because the browser only ever talks to the Pages URL.
     [string] $BackendUrl = 'https://merqo-api.onrender.com',
 
     # The demo account to sign in with. The default is the owner, who sees
@@ -56,6 +74,10 @@ $script:Failed = 0
 # a diagnosis, so it gets its own container.
 $FrontendSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $BackendSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+
+# The jar that holds only the cookies of the sign in answer. It is built after
+# the sign in and every later request travels with it.
+$script:StrictSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 
 function Write-Head {
     Write-Output ''
@@ -107,7 +129,8 @@ function Get-DnsName {
 }
 
 # ---------------------------------------------------------------------------
-# One request. The answer is the body, the status is written to $Status.
+# One request. The answer is the body, the status is written to $Status and the
+# Set-Cookie headers are written to $SetCookies.
 #
 # The cookies of the session travel with the request and the cookies of the
 # answer are kept in the session, so the session cookie and the CSRF cookie
@@ -124,6 +147,7 @@ function Invoke-Check {
 
     $script:Status = 0
     $script:Body = ''
+    $script:SetCookies = @()
 
     $requestHeaders = @{ 'Accept' = 'application/json, text/plain, */*' }
     foreach ($key in $Headers.Keys) {
@@ -150,6 +174,7 @@ function Invoke-Check {
         $response = Invoke-WebRequest @parameters
         $script:Status = [int] $response.StatusCode
         $script:Body = $response.Content
+        $script:SetCookies = @($response.Headers['Set-Cookie'])
     } catch {
         # Invoke-WebRequest throws for every status above 299. The answer is
         # still in the exception, so the body is read from there.
@@ -200,6 +225,76 @@ function Get-CookieValue {
     return ''
 }
 
+# ---------------------------------------------------------------------------
+# The names of the cookies in a session. Only the names are printed, never the
+# values, so the output of the script may be pasted into a ticket.
+# ---------------------------------------------------------------------------
+function Get-CookieNames {
+    param(
+        [Microsoft.PowerShell.Commands.WebRequestSession] $Session,
+        [string] $BaseUrl
+    )
+
+    try {
+        return (($Session.Cookies.GetCookies($BaseUrl) |
+                Select-Object -ExpandProperty Name -Unique) -join ', ')
+    } catch {
+        return ''
+    }
+}
+
+# ---------------------------------------------------------------------------
+# The CSRF token of the session, sent back the way the browser sends it.
+#
+# The token is read from the cookie and put into the header. It is never
+# printed.
+# ---------------------------------------------------------------------------
+function Get-CsrfHeader {
+    param(
+        [Microsoft.PowerShell.Commands.WebRequestSession] $Session,
+        [string] $BaseUrl
+    )
+
+    $token = Get-CookieValue -Session $Session -BaseUrl $BaseUrl -Name 'XSRF-TOKEN'
+    if (-not $token) {
+        return @{}
+    }
+    return @{ 'X-XSRF-TOKEN' = $token }
+}
+
+# ---------------------------------------------------------------------------
+# Builds the strict jar: it holds only the cookies of the sign in answer.
+#
+# The name of every cookie is printed, never a value.
+# ---------------------------------------------------------------------------
+function New-StrictSession {
+    param([string[]] $SetCookies, [string] $BaseUrl)
+
+    $jar = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    $cookieHost = ([Uri] $BaseUrl).Host
+
+    foreach ($line in $SetCookies) {
+        if (-not $line) {
+            continue
+        }
+        # Only the name and the value of the cookie itself, never the flags.
+        $first = ($line -split ';')[0]
+        $parts = $first -split '=', 2
+        if ($parts.Count -lt 2) {
+            continue
+        }
+        $name = $parts[0].Trim()
+        $value = $parts[1]
+        try {
+            $jar.Cookies.Add((New-Object System.Net.Cookie($name, $value, '/', $cookieHost)))
+        } catch {
+            # A cookie the jar cannot hold is skipped, and the step that needs
+            # it fails with a clear message.
+        }
+    }
+    return $jar
+}
+
 Write-Head 'Merqo live check'
 Write-Output ("  Frontend : " + $FrontendUrl)
 Write-Output ("  Backend  : " + $BackendUrl)
@@ -235,16 +330,20 @@ if (-not $frontendDns) {
 
 # ---------------------------------------------------------------------------
 # Step 2 - the backend answers and the database is reachable.
+#
+# This call goes straight to the backend. It is a diagnosis, not a requirement:
+# the browser only ever talks to the Pages URL. A wrong address here is
+# therefore only a note, as long as the proxy check below works.
 # ---------------------------------------------------------------------------
 Write-Head 'Step 2 - the backend answers'
 
 $backendHost = ([Uri] $BackendUrl).Host
 $backendDns = Get-DnsName $backendHost
 if (-not $backendDns) {
-    Write-Fail ("the backend host " + $backendHost + " does not exist in DNS.")
-    Write-Info 'The Render service is not created yet.'
+    Write-Info ("the backend host " + $backendHost + " does not exist in DNS, so it is skipped.")
+    Write-Info 'The direct check is only a diagnosis. The proxy check in step 3 is the one that matters.'
 } else {
-    Write-Pass ("the backend host resolves (" + $backendDns + ")")
+    Write-Info ("the backend host resolves (" + $backendDns + ")")
 
     Invoke-Check -Uri ($BackendUrl + '/api/v1/health/ping') -Session $BackendSession
     if ($script:Status -eq 200) {
@@ -262,9 +361,9 @@ if (-not $backendDns) {
             Write-Info $script:Body
         }
     } else {
-        Write-Fail ('the backend answered ' + $script:Status)
-        Write-Info 'A 404 here usually means no service is bound to this name yet.'
-        Write-Info $script:Body
+        Write-Info ('the direct call answered ' + $script:Status + ', so it is skipped.')
+        Write-Info 'The direct check is only a diagnosis. The proxy check in step 3 is the one that matters.'
+        Write-Info 'Check API_BASE_URL in the Cloudflare dashboard if the proxy check fails too.'
     }
 }
 
@@ -319,15 +418,14 @@ if ($script:Status -eq 200) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 5 - a demo login works.
+# Step 5 - the demo login works and hands out both cookies.
 # ---------------------------------------------------------------------------
 Write-Head 'Step 5 - the demo login works'
 
 # The first call gives the browser the CSRF cookie. The token then travels
 # back in the header, exactly like the browser does it.
 Invoke-Check -Uri ($FrontendUrl + '/api/v1/auth/status') -Session $FrontendSession
-$csrfToken = Get-CookieValue -Session $FrontendSession -BaseUrl $FrontendUrl -Name 'XSRF-TOKEN'
-if ($csrfToken) {
+if (Get-CookieValue -Session $FrontendSession -BaseUrl $FrontendUrl -Name 'XSRF-TOKEN') {
     Write-Pass 'the CSRF cookie was handed out'
 } else {
     Write-Fail 'no CSRF cookie was handed out, so every request that changes something is refused'
@@ -335,29 +433,40 @@ if ($csrfToken) {
 
 $loginBody = '{ "accountKey": "' + $AccountKey + '" }'
 Invoke-Check -Uri ($FrontendUrl + '/api/v1/demo/login') -Method 'POST' -Body $loginBody `
-    -Headers @{ 'X-XSRF-TOKEN' = $csrfToken } -Session $FrontendSession
+    -Headers (Get-CsrfHeader -Session $FrontendSession -BaseUrl $FrontendUrl) -Session $FrontendSession
+
+$script:SignedIn = $false
+$script:ProbeUserId = ''
 
 if ($script:Status -eq 200) {
     Write-Pass ('the demo login as ' + $AccountKey + ' worked')
+    $script:SignedIn = $true
     if ($script:Body -match '"accountType"\s*:\s*"([A-Z]+)"') {
         Write-Info ('the signed in account type: ' + $Matches[1])
     }
 
-    $sessionCookie = Get-CookieValue -Session $FrontendSession -BaseUrl $FrontendUrl -Name 'MERQO_SESSION'
-    if ($sessionCookie) {
+    # The strict jar holds only the cookies of this answer. Every later request
+    # travels with it and with nothing else, so the script proves that the
+    # answer of the login is enough.
+    $script:StrictSession = New-StrictSession -SetCookies $script:SetCookies -BaseUrl $FrontendUrl
+    $strictNames = Get-CookieNames -Session $script:StrictSession -BaseUrl $FrontendUrl
+    Write-Info ('the cookies of the login answer: ' + $strictNames)
+
+    if (Get-CookieValue -Session $script:StrictSession -BaseUrl $FrontendUrl -Name 'MERQO_SESSION') {
         Write-Pass 'the session cookie was written'
     } else {
         Write-Fail 'no session cookie was written, so the browser stays signed out'
+        $script:SignedIn = $false
     }
 
-    if ($sessionCookie) {
-        Invoke-Check -Uri ($FrontendUrl + '/api/v1/auth/me') -Session $FrontendSession
-        if ($script:Status -eq 200) {
-            Write-Pass 'the session cookie is accepted on the next request'
-        } else {
-            Write-Fail ('the session cookie was refused (' + $script:Status + ')')
-            Write-Info $script:Body
-        }
+    # The CSRF cookie has to be in the answer of the login as well. The browser
+    # has no other way to learn the token of the session it is in.
+    if (Get-CookieValue -Session $script:StrictSession -BaseUrl $FrontendUrl -Name 'XSRF-TOKEN') {
+        Write-Pass 'the CSRF cookie was handed out with the login'
+    } else {
+        Write-Fail 'the login did not hand out the CSRF cookie, so the next POST is refused with a 403'
+        Write-Info 'This is the bug that broke the live site. The answer of the login has to carry both cookies.'
+        $script:SignedIn = $false
     }
 } elseif ($script:Status -eq 403 -and $script:Body -match 'CSRF_TOKEN_INVALID') {
     Write-Fail 'the login was refused because the CSRF token was missing'
@@ -369,6 +478,111 @@ if ($script:Status -eq 200) {
 } else {
     Write-Fail ('the demo login answered ' + $script:Status)
     Write-Info $script:Body
+}
+
+# ---------------------------------------------------------------------------
+# Step 6 - GET /auth/me is accepted.
+# ---------------------------------------------------------------------------
+Write-Head 'Step 6 - the session is accepted'
+
+if (-not $script:SignedIn) {
+    Write-Fail 'the session could not be checked, because the login did not work'
+} else {
+    Invoke-Check -Uri ($FrontendUrl + '/api/v1/auth/me') -Session $script:StrictSession
+    if ($script:Status -eq 200) {
+        Write-Pass 'GET /auth/me is accepted'
+    } else {
+        Write-Fail ('GET /auth/me was refused (' + $script:Status + ')')
+        Write-Info $script:Body
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Step 7 - a user is created. This is the first POST after the login.
+# ---------------------------------------------------------------------------
+Write-Head 'Step 7 - a user is created'
+
+# The name of the probe account. It has to be unique, so the time is part of
+# it. It is not a secret: it is the name of an account the script is about to
+# create and to deactivate again.
+$probeName = 'livecheck' + (Get-Date -Format 'MMddHHmmss')
+
+if (-not $script:SignedIn) {
+    Write-Fail 'the account could not be created, because the login did not work'
+} else {
+    $createBody = '{ "username": "' + $probeName + '", "fullName": "Live Check", "accountType": "STAFF" }'
+    Invoke-Check -Uri ($FrontendUrl + '/api/v1/users/create') -Method 'POST' -Body $createBody `
+        -Headers (Get-CsrfHeader -Session $script:StrictSession -BaseUrl $FrontendUrl) `
+        -Session $script:StrictSession
+
+    if ($script:Status -eq 201) {
+        Write-Pass 'POST /users/create worked (201)'
+
+        if ($script:Body -match '"id"\s*:\s*"([0-9a-fA-F-]{36})"') {
+            $script:ProbeUserId = $Matches[1]
+            Write-Info ('the new account has the id ' + $script:ProbeUserId)
+        } else {
+            Write-Fail 'the answer of the create carries no account id, so the account cannot be deactivated'
+        }
+    } elseif ($script:Status -eq 403 -and $script:Body -match 'CSRF_TOKEN_INVALID') {
+        Write-Fail 'POST /users/create was refused because the CSRF token was missing or wrong'
+        Write-Info 'This is the bug that broke the live site. The login has to hand out the CSRF cookie.'
+    } else {
+        Write-Fail ('POST /users/create answered ' + $script:Status)
+        Write-Info $script:Body
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Step 8 - the new account is deactivated. This is the second POST.
+# ---------------------------------------------------------------------------
+Write-Head 'Step 8 - the account is deactivated'
+
+if (-not $script:ProbeUserId) {
+    Write-Fail 'the account could not be deactivated, because it was not created'
+} else {
+    Invoke-Check -Uri ($FrontendUrl + '/api/v1/users/' + $script:ProbeUserId + '/deactivate') `
+        -Method 'POST' -Body '{}' `
+        -Headers (Get-CsrfHeader -Session $script:StrictSession -BaseUrl $FrontendUrl) `
+        -Session $script:StrictSession
+
+    if ($script:Status -eq 200) {
+        Write-Pass 'POST /users/{id}/deactivate worked (200)'
+        if ($script:Body -match '"isActive"\s*:\s*false') {
+            Write-Pass 'the account is inactive'
+        } else {
+            Write-Fail 'the answer does not say the account is inactive'
+            Write-Info $script:Body
+        }
+    } elseif ($script:Status -eq 403 -and $script:Body -match 'CSRF_TOKEN_INVALID') {
+        Write-Fail 'the deactivation was refused because the CSRF token was missing or wrong'
+    } else {
+        Write-Fail ('the deactivation answered ' + $script:Status)
+        Write-Info $script:Body
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Step 9 - the sign out works. This is the third POST.
+# ---------------------------------------------------------------------------
+Write-Head 'Step 9 - the sign out works'
+
+if (-not $script:SignedIn) {
+    Write-Fail 'the sign out could not be checked, because the login did not work'
+} else {
+    Invoke-Check -Uri ($FrontendUrl + '/api/v1/auth/logout') -Method 'POST' -Body '{}' `
+        -Headers (Get-CsrfHeader -Session $script:StrictSession -BaseUrl $FrontendUrl) `
+        -Session $script:StrictSession
+
+    if ($script:Status -eq 204) {
+        Write-Pass 'POST /auth/logout worked (204)'
+    } elseif ($script:Status -eq 403 -and $script:Body -match 'CSRF_TOKEN_INVALID') {
+        Write-Fail 'the sign out was refused because the CSRF token was missing or wrong'
+        Write-Info 'This is the bug that broke the live site. The login has to hand out the CSRF cookie.'
+    } else {
+        Write-Fail ('the sign out answered ' + $script:Status)
+        Write-Info $script:Body
+    }
 }
 
 # ---------------------------------------------------------------------------

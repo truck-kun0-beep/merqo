@@ -1,0 +1,47 @@
+import { Badge, type BadgeTone } from './Badge'
+
+const STATUS_MAP: Record<string, { label: string; tone: BadgeTone }> = {
+  ACTIVE: { label: 'Active', tone: 'success' },
+  INACTIVE: { label: 'Inactive', tone: 'neutral' },
+  SCHEDULED: { label: 'Scheduled', tone: 'info' },
+  EXPIRED: { label: 'Expired', tone: 'neutral' },
+  DISABLED: { label: 'Disabled', tone: 'warning' },
+  LOW_STOCK: { label: 'Low stock', tone: 'warning' },
+  IN_PROGRESS: { label: 'In progress', tone: 'info' },
+  SUBMITTED: { label: 'Submitted', tone: 'warning' },
+  APPLIED: { label: 'Applied', tone: 'success' },
+  CANCELLED: { label: 'Cancelled', tone: 'neutral' },
+  REQUESTED: { label: 'Requested', tone: 'info' },
+  APPROVED: { label: 'Approved', tone: 'primary' },
+  REJECTED: { label: 'Rejected', tone: 'danger' },
+  DISPATCHED: { label: 'Dispatched', tone: 'warning' },
+  PARTIALLY_RECEIVED: { label: 'Partially received', tone: 'warning' },
+  RECEIVED: { label: 'Received', tone: 'success' },
+  CLOSED_WITH_SHORTAGE: { label: 'Closed with shortage', tone: 'danger' },
+  FLAGGED: { label: 'Flagged', tone: 'danger' },
+  UP: { label: 'Up', tone: 'success' },
+  DOWN: { label: 'Down', tone: 'danger' },
+}
+
+export interface StatusPillProps {
+  status: string
+  label?: string
+  className?: string
+}
+
+/**
+ * Renders a consistent status pill with semantic colors mapped by status key.
+ */
+export function StatusPill({ status, label, className = '' }: StatusPillProps) {
+  const normalized = status.trim().toUpperCase()
+  const mapped = STATUS_MAP[normalized] ?? {
+    label: status.replaceAll('_', ' '),
+    tone: 'neutral' as BadgeTone,
+  }
+
+  return (
+    <Badge tone={mapped.tone} className={className}>
+      {label ?? mapped.label}
+    </Badge>
+  )
+}

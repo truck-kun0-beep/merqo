@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import {
   createAssignment,
   endAssignment,
@@ -14,30 +14,36 @@ import {
   replaceUserTemplates,
   updateUser,
 } from '../api/business'
-import { ApiError } from '../api/types'
-import type { AssignmentSummary, LocationSummary, UserDetail, UserOverride } from '../api/models'
+import type {
+  AssignmentSummary,
+  ExplainedPermission,
+  LocationSummary,
+  UserDetail,
+  UserOverride,
+} from '../api/models'
 import { useSession } from '../session/sessionContext'
-import { formatDateTime } from '../lib/format'
+import {
+  Badge,
+  Button,
+  Checkbox,
+  DataTable,
+  DateText,
+  ErrorState,
+  FormField,
+  Input,
+  PageHeader,
+  Select,
+  Skeleton,
+  StatusPill,
+  Tabs,
+  type DataTableColumn,
+  type TabItem,
+} from '../components/ui'
 
 /**
- * The screen of one account.
- *
- * It shows everything that decides what the account may do, and lets the owner
- * or the manager change it:
- *
- * <ul>
- *   <li>the profile,
- *   <li>the permission templates,
- *   <li>the overrides, which sit on top of the templates,
- *   <li>the delegation list, which only a manager account has,
- *   <li>the branch assignments,
- *   <li>the effective permissions with the reason for each one.
- * </ul>
- *
- * Every write goes to the backend, and the backend decides whether the caller
- * is allowed to make it. The screen only hides the parts the caller cannot use.
- *
- * @returns the account screen element
+ * Detail screen for one user account with tabbed sections for profile,
+ * permission templates, overrides, manager delegations, location assignments,
+ * and resolved effective permissions.
  */
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -61,24 +67,20 @@ export default function UserDetailPage() {
 
   if (accountQuery.isPending) {
     return (
-      <div
-        role="status"
-        className="rounded-xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-600"
-      >
-        Loading the account...
+      <div role="status" aria-label="Loading account" className="space-y-4">
+        <Skeleton className="h-16 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
       </div>
     )
   }
 
   if (accountQuery.error) {
     return (
-      <div
-        role="alert"
-        className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-6 text-sm text-rose-800"
-      >
-        <p className="font-medium">The account could not be loaded.</p>
-        <p className="mt-1">{accountQuery.error.message}</p>
-      </div>
+      <ErrorState
+        title="The account could not be loaded."
+        error={accountQuery.error}
+        onRetry={() => accountQuery.refetch()}
+      />
     )
   }
 
@@ -86,53 +88,92 @@ export default function UserDetailPage() {
     return null
   }
 
+  const profileCard = (
+    <ProfileSection key={profileKey(account)} account={account} queryClient={queryClient} />
+  )
+  const templatesCard = (
+    <TemplatesSection key={templateKey(account)} account={account} queryClient={queryClient} />
+  )
+  const overridesCard = (
+    <OverridesSection key={overrideKey(account)} account={account} queryClient={queryClient} />
+  )
+  const delegationsCard =
+    account.accountType === 'MANAGER' ? (
+      <DelegationsSection
+        key={delegationKey(account)}
+        account={account}
+        queryClient={queryClient}
+        isOwner={isOwner}
+      />
+    ) : null
+  const assignmentsCard = <AssignmentsSection account={account} queryClient={queryClient} />
+  const effectiveCard = (
+    <EffectivePermissionsSection
+      permissions={permissionsQuery.data ?? []}
+      isLoading={permissionsQuery.isPending}
+    />
+  )
+
+  const tabs: TabItem[] = [
+    {
+      id: 'all',
+      label: 'All sections',
+      content: (
+        <div className="space-y-6">
+          {profileCard}
+          {templatesCard}
+          {overridesCard}
+          {delegationsCard}
+          {assignmentsCard}
+          {effectiveCard}
+        </div>
+      ),
+    },
+    { id: 'profile', label: 'Profile', content: profileCard },
+    {
+      id: 'templates',
+      label: 'Templates',
+      badge: <Badge tone="neutral">{account.templates.length}</Badge>,
+      content: templatesCard,
+    },
+    {
+      id: 'overrides',
+      label: 'Overrides',
+      badge: <Badge tone="neutral">{account.overrides.length}</Badge>,
+      content: overridesCard,
+    },
+    ...(delegationsCard
+      ? [{ id: 'delegations', label: 'Delegations', content: delegationsCard }]
+      : []),
+    {
+      id: 'assignments',
+      label: 'Locations',
+      badge: <Badge tone="neutral">{account.locations.length}</Badge>,
+      content: assignmentsCard,
+    },
+    {
+      id: 'effective',
+      label: 'Effective permissions',
+      content: effectiveCard,
+    },
+  ]
+
   return (
     <div className="space-y-6">
-      <div>
-        <Link to="/users" className="text-xs font-medium text-merqo-700 hover:underline">
-          Back to the people
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-          {account.fullName}
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">
-          {account.username} - {describeRole(account.accountType)} -{' '}
-          {account.isActive ? 'Active' : 'Inactive'}
-          {account.mustChangePassword ? ' - has to change the password' : ''}
-        </p>
-      </div>
-
-      <ProfileSection key={profileKey(account)} account={account} queryClient={queryClient} />
-
-      <TemplatesSection key={templateKey(account)} account={account} queryClient={queryClient} />
-
-      <OverridesSection key={overrideKey(account)} account={account} queryClient={queryClient} />
-
-      {account.accountType === 'MANAGER' ? (
-        <DelegationsSection
-          key={delegationKey(account)}
-          account={account}
-          queryClient={queryClient}
-          isOwner={isOwner}
-        />
-      ) : null}
-
-      <AssignmentsSection account={account} queryClient={queryClient} />
-
-      <EffectivePermissionsSection
-        permissions={permissionsQuery.data ?? []}
-        isLoading={permissionsQuery.isPending}
+      <PageHeader
+        breadcrumbs={[{ label: 'People', to: '/users' }, { label: account.fullName }]}
+        title={account.fullName}
+        description={`${account.username} · ${describeRole(account.accountType)}${
+          account.mustChangePassword ? ' · Password change required' : ''
+        }`}
+        actions={<StatusPill status={account.isActive ? 'ACTIVE' : 'INACTIVE'} />}
       />
+
+      <Tabs tabs={tabs} defaultTab="all" />
     </div>
   )
 }
 
-/**
- * The profile of the account.
- *
- * @param props the account and the query client
- * @returns the section element
- */
 function ProfileSection({
   account,
   queryClient,
@@ -155,73 +196,49 @@ function ProfileSection({
   })
 
   return (
-    <section aria-labelledby="profile-heading" className="space-y-3">
-      <h2 id="profile-heading" className="text-sm font-semibold text-slate-700">
+    <section
+      aria-labelledby="profile-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
+      <h2 id="profile-heading" className="text-sm font-semibold text-slate-900">
         Profile
       </h2>
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="text-sm text-slate-700">
-            <span className="block text-xs font-medium text-slate-500">Full name</span>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="block text-xs font-medium text-slate-500">Phone</span>
-            <input
-              type="text"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="block text-xs font-medium text-slate-500">Email</span>
-            <input
-              type="text"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-merqo-500 focus:ring-2 focus:ring-merqo-100"
-            />
-          </label>
-        </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <FormField label="Full name">
+          <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        </FormField>
+        <FormField label="Phone">
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </FormField>
+        <FormField label="Email">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </FormField>
+      </div>
 
-        {mutation.isError ? (
-          <p role="alert" className="mt-3 text-sm text-rose-700">
-            {readError(mutation.error)}
-          </p>
-        ) : null}
-        {mutation.isSuccess ? (
-          <p role="status" className="mt-3 text-sm text-emerald-700">
-            The profile was saved.
-          </p>
-        ) : null}
-
+      {mutation.isError ? (
         <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
-            className="rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:opacity-60"
-          >
-            {mutation.isPending ? 'Saving...' : 'Save the profile'}
-          </button>
+          <ErrorState title="Could not save profile" error={mutation.error} />
         </div>
+      ) : null}
+      {mutation.isSuccess ? (
+        <p role="status" className="mt-3 text-sm font-medium text-emerald-700">
+          The profile was saved.
+        </p>
+      ) : null}
+
+      <div className="mt-4">
+        <Button
+          onClick={() => mutation.mutate()}
+          isLoading={mutation.isPending}
+          loadingText="Saving..."
+        >
+          Save the profile
+        </Button>
       </div>
     </section>
   )
 }
 
-/**
- * The permission templates of the account.
- *
- * @param props the account and the query client
- * @returns the section element
- */
 function TemplatesSection({
   account,
   queryClient,
@@ -239,91 +256,97 @@ function TemplatesSection({
 
   const mutation = useMutation({
     mutationFn: () => replaceUserTemplates(account.id, selected),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user', account.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', account.id] })
+      queryClient.invalidateQueries({ queryKey: ['user', account.id, 'effective-permissions'] })
+    },
   })
 
   const canListTemplates = templatesQuery.isSuccess
+  const availableTemplates =
+    canListTemplates && templatesQuery.data.length > 0 ? templatesQuery.data : account.templates
 
   return (
-    <section aria-labelledby="templates-heading" className="space-y-3">
-      <h2 id="templates-heading" className="text-sm font-semibold text-slate-700">
+    <section
+      aria-labelledby="templates-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
+      <h2 id="templates-heading" className="text-sm font-semibold text-slate-900">
         Permission templates
       </h2>
-      <p className="text-xs text-slate-500">
-        A template is a named set of permissions. The account gets every permission of every
-        template it holds.
+      <p className="mt-1 text-xs text-slate-500">
+        A template is a named set of permissions. The account receives every permission in each
+        assigned template.
       </p>
 
       {templatesQuery.error ? (
-        <p className="text-xs text-slate-500">
-          The full list of templates cannot be read from here, so only the templates of this account
-          are shown.
+        <p className="mt-2 text-xs text-slate-500">
+          The full template list cannot be read from this account, so only assigned templates are
+          shown.
         </p>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <ul className="space-y-2">
-          {account.templates.map((template) => (
-            <li key={template.id} className="flex items-start gap-2 text-sm">
-              <input
-                id={`template-${template.id}`}
-                type="checkbox"
-                checked={selected.includes(template.id)}
-                disabled={!canListTemplates || mutation.isPending}
-                onChange={(event) =>
-                  setSelected((previous) =>
-                    event.target.checked
-                      ? [...previous, template.id]
-                      : previous.filter((value) => value !== template.id),
-                  )
-                }
-                className="mt-1"
-              />
-              <label htmlFor={`template-${template.id}`}>
-                <span className="font-medium text-slate-800">{template.name}</span>
-                <span className="ml-2 font-mono text-xs text-slate-400">{template.code}</span>
-                {template.description ? (
-                  <span className="block text-xs text-slate-500">{template.description}</span>
-                ) : null}
-              </label>
-            </li>
-          ))}
-        </ul>
-
-        {account.templates.length === 0 ? (
+      <div className="mt-4">
+        {availableTemplates.length > 0 ? (
+          <ul className="grid gap-2.5 sm:grid-cols-2">
+            {availableTemplates.map((template) => (
+              <li
+                key={template.id}
+                className="rounded-lg border border-slate-200 bg-slate-50/50 p-3"
+              >
+                <Checkbox
+                  id={`template-${template.id}`}
+                  checked={selected.includes(template.id)}
+                  disabled={!canListTemplates || mutation.isPending}
+                  onChange={(event) =>
+                    setSelected((previous) =>
+                      event.target.checked
+                        ? [...previous, template.id]
+                        : previous.filter((value) => value !== template.id),
+                    )
+                  }
+                  label={
+                    <span>
+                      {template.name}{' '}
+                      <span className="ml-1 font-mono text-xs font-normal text-slate-400">
+                        {template.code}
+                      </span>
+                    </span>
+                  }
+                  description={template.description ?? undefined}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
           <p className="text-sm text-slate-600">This account holds no template.</p>
-        ) : null}
+        )}
 
         {mutation.isError ? (
-          <p role="alert" className="mt-3 text-sm text-rose-700">
-            {readError(mutation.error)}
-          </p>
+          <div className="mt-4">
+            <ErrorState title="Could not update templates" error={mutation.error} />
+          </div>
         ) : null}
         {mutation.isSuccess ? (
-          <p role="status" className="mt-3 text-sm text-emerald-700">
+          <p role="status" className="mt-3 text-sm font-medium text-emerald-700">
             The templates were saved.
           </p>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          className="mt-4 rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:opacity-60"
-        >
-          {mutation.isPending ? 'Saving...' : 'Save the templates'}
-        </button>
+        <div className="mt-4">
+          <Button
+            onClick={() => mutation.mutate()}
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
+          >
+            Save the templates
+          </Button>
+        </div>
       </div>
     </section>
   )
 }
 
-/**
- * The overrides of the account.
- *
- * @param props the account and the query client
- * @returns the section element
- */
 function OverridesSection({
   account,
   queryClient,
@@ -350,7 +373,10 @@ function OverridesSection({
           locationId: override.locationId,
         })),
       ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user', account.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', account.id] })
+      queryClient.invalidateQueries({ queryKey: ['user', account.id, 'effective-permissions'] })
+    },
   })
 
   const grantable = useMemo(
@@ -366,11 +392,6 @@ function OverridesSection({
     [catalogueQuery.data],
   )
 
-  /**
-   * Adds one override to the draft.
-   *
-   * @param code the permission code
-   */
   function addOverride(code: string) {
     setDraft((previous) => [
       ...previous,
@@ -378,58 +399,61 @@ function OverridesSection({
     ])
   }
 
-  /**
-   * Removes one override from the draft.
-   *
-   * @param index the position of the override
-   */
   function removeOverride(index: number) {
     setDraft((previous) => previous.filter((_, position) => position !== index))
   }
 
   return (
-    <section aria-labelledby="overrides-heading" className="space-y-3">
-      <h2 id="overrides-heading" className="text-sm font-semibold text-slate-700">
+    <section
+      aria-labelledby="overrides-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
+      <h2 id="overrides-heading" className="text-sm font-semibold text-slate-900">
         Overrides
       </h2>
-      <p className="text-xs text-slate-500">
-        An override sits on top of the templates: an allow adds a permission and a deny takes one
-        away. A deny always wins.
+      <p className="mt-1 text-xs text-slate-500">
+        Overrides sit on top of templates: an Allow adds a permission and a Deny removes one. Deny
+        always wins.
       </p>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mt-4">
         {draft.length > 0 ? (
-          <ul className="mb-4 space-y-2">
+          <ul className="mb-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
             {draft.map((override, index) => (
               <li
                 key={`${override.permission}-${index}`}
-                className="flex flex-wrap items-center gap-2"
+                className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5"
               >
-                <span className="font-mono text-xs text-slate-700">{override.permission}</span>
-                <select
-                  aria-label={`The effect of ${override.permission}`}
-                  value={override.effect}
-                  onChange={(event) =>
-                    setDraft((previous) =>
-                      previous.map((item, position) =>
-                        position === index
-                          ? { ...item, effect: event.target.value as 'ALLOW' | 'DENY' }
-                          : item,
-                      ),
-                    )
-                  }
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-800"
-                >
-                  <option value="ALLOW">Allow</option>
-                  <option value="DENY">Deny</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => removeOverride(index)}
-                  className="text-xs font-medium text-rose-700 hover:underline"
-                >
-                  Remove
-                </button>
+                <span className="font-mono text-xs font-medium text-slate-800">
+                  {override.permission}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Select
+                    aria-label={`The effect of ${override.permission}`}
+                    value={override.effect}
+                    onChange={(event) =>
+                      setDraft((previous) =>
+                        previous.map((item, position) =>
+                          position === index
+                            ? { ...item, effect: event.target.value as 'ALLOW' | 'DENY' }
+                            : item,
+                        ),
+                      )
+                    }
+                    className="w-28 py-1 text-xs"
+                  >
+                    <option value="ALLOW">Allow</option>
+                    <option value="DENY">Deny</option>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-rose-700 hover:bg-rose-50"
+                    onClick={() => removeOverride(index)}
+                  >
+                    Remove
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -438,16 +462,14 @@ function OverridesSection({
         )}
 
         {grantable.length > 0 ? (
-          <label className="block text-sm text-slate-700">
-            <span className="block text-xs font-medium text-slate-500">Add an override</span>
-            <select
+          <FormField label="Add an override" className="max-w-md">
+            <Select
               value=""
               onChange={(event) => {
                 if (event.target.value) {
                   addOverride(event.target.value)
                 }
               }}
-              className="mt-1 w-full max-w-sm rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
             >
               <option value="">Choose a permission</option>
               {grantable.map((permission) => (
@@ -455,40 +477,35 @@ function OverridesSection({
                   {permission.code} - {permission.description}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </FormField>
         ) : null}
 
         {mutation.isError ? (
-          <p role="alert" className="mt-3 text-sm text-rose-700">
-            {readError(mutation.error)}
-          </p>
+          <div className="mt-4">
+            <ErrorState title="Could not update overrides" error={mutation.error} />
+          </div>
         ) : null}
         {mutation.isSuccess ? (
-          <p role="status" className="mt-3 text-sm text-emerald-700">
+          <p role="status" className="mt-3 text-sm font-medium text-emerald-700">
             The overrides were saved.
           </p>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          className="mt-4 rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:opacity-60"
-        >
-          {mutation.isPending ? 'Saving...' : 'Save the overrides'}
-        </button>
+        <div className="mt-4">
+          <Button
+            onClick={() => mutation.mutate()}
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
+          >
+            Save the overrides
+          </Button>
+        </div>
       </div>
     </section>
   )
 }
 
-/**
- * The delegation list of a manager.
- *
- * @param props the account, the query client and whether the caller is the owner
- * @returns the section element
- */
 function DelegationsSection({
   account,
   queryClient,
@@ -522,11 +539,14 @@ function DelegationsSection({
 
   if (!isOwner) {
     return (
-      <section aria-labelledby="delegations-heading" className="space-y-3">
-        <h2 id="delegations-heading" className="text-sm font-semibold text-slate-700">
+      <section
+        aria-labelledby="delegations-heading"
+        className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+      >
+        <h2 id="delegations-heading" className="text-sm font-semibold text-slate-900">
           Delegation list
         </h2>
-        <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-slate-600">
           Only the owner may change the delegation list of a manager.
         </p>
       </section>
@@ -534,22 +554,23 @@ function DelegationsSection({
   }
 
   return (
-    <section aria-labelledby="delegations-heading" className="space-y-3">
-      <h2 id="delegations-heading" className="text-sm font-semibold text-slate-700">
+    <section
+      aria-labelledby="delegations-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
+      <h2 id="delegations-heading" className="text-sm font-semibold text-slate-900">
         Delegation list
       </h2>
-      <p className="text-xs text-slate-500">
-        The permissions this manager may hand to a staff member. Only a permission that is on this
-        list can be delegated.
+      <p className="mt-1 text-xs text-slate-500">
+        Permissions this manager may grant to staff members.
       </p>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <ul className="grid gap-2 sm:grid-cols-2">
+      <div className="mt-4">
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {delegable.map((code) => (
-            <li key={code} className="flex items-center gap-2 text-sm">
-              <input
+            <li key={code}>
+              <Checkbox
                 id={`delegation-${code}`}
-                type="checkbox"
                 checked={selected.includes(code)}
                 disabled={mutation.isPending}
                 onChange={(event) =>
@@ -559,10 +580,8 @@ function DelegationsSection({
                       : previous.filter((value) => value !== code),
                   )
                 }
+                label={<span className="font-mono text-xs">{code}</span>}
               />
-              <label htmlFor={`delegation-${code}`} className="font-mono text-xs text-slate-700">
-                {code}
-              </label>
             </li>
           ))}
         </ul>
@@ -572,35 +591,30 @@ function DelegationsSection({
         ) : null}
 
         {mutation.isError ? (
-          <p role="alert" className="mt-3 text-sm text-rose-700">
-            {readError(mutation.error)}
-          </p>
+          <div className="mt-4">
+            <ErrorState title="Could not save delegations" error={mutation.error} />
+          </div>
         ) : null}
         {mutation.isSuccess ? (
-          <p role="status" className="mt-3 text-sm text-emerald-700">
+          <p role="status" className="mt-3 text-sm font-medium text-emerald-700">
             The delegation list was saved.
           </p>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          className="mt-4 rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:opacity-60"
-        >
-          {mutation.isPending ? 'Saving...' : 'Save the delegation list'}
-        </button>
+        <div className="mt-4">
+          <Button
+            onClick={() => mutation.mutate()}
+            isLoading={mutation.isPending}
+            loadingText="Saving..."
+          >
+            Save the delegation list
+          </Button>
+        </div>
       </div>
     </section>
   )
 }
 
-/**
- * The branch assignments of the account.
- *
- * @param props the account and the query client
- * @returns the section element
- */
 function AssignmentsSection({
   account,
   queryClient,
@@ -626,46 +640,59 @@ function AssignmentsSection({
     onSuccess: () => {
       setLocationId('')
       queryClient.invalidateQueries({ queryKey: ['user', account.id] })
+      queryClient.invalidateQueries({ queryKey: ['user', account.id, 'effective-permissions'] })
     },
   })
 
   const endMutation = useMutation({
     mutationFn: (assignmentId: string) => endAssignment(assignmentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user', account.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', account.id] })
+      queryClient.invalidateQueries({ queryKey: ['user', account.id, 'effective-permissions'] })
+    },
   })
 
   const locations = locationsQuery.data ?? []
 
   return (
-    <section aria-labelledby="assignments-heading" className="space-y-3">
-      <h2 id="assignments-heading" className="text-sm font-semibold text-slate-700">
+    <section
+      aria-labelledby="assignments-heading"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
+    >
+      <h2 id="assignments-heading" className="text-sm font-semibold text-slate-900">
         Where this account works
       </h2>
-      <p className="text-xs text-slate-500">
-        A location scoped permission only works where the account is assigned.
+      <p className="mt-1 text-xs text-slate-500">
+        Location-scoped permissions only apply where the account holds an active assignment.
       </p>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mt-4">
         {account.locations.length > 0 ? (
-          <ul className="mb-4 space-y-2">
+          <ul className="mb-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
             {account.locations.map((assignment: AssignmentSummary) => (
-              <li key={assignment.id} className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="text-slate-800">
-                  {describeLocation(locations, assignment.locationId)}
-                </span>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                  {assignment.assignmentType === 'MANAGER' ? 'Manager' : 'Staff'}
-                </span>
-                <span className="text-xs text-slate-500">
-                  since {formatDateTime(assignment.startedAt)}
-                </span>
-                <button
-                  type="button"
+              <li
+                key={assignment.id}
+                className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 text-sm"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-slate-900">
+                    {describeLocation(locations, assignment.locationId)}
+                  </span>
+                  <Badge tone="neutral">
+                    {assignment.assignmentType === 'MANAGER' ? 'Manager' : 'Staff'}
+                  </Badge>
+                  <span className="text-xs text-slate-500">
+                    since <DateText value={assignment.startedAt} withTime />
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-rose-700 hover:bg-rose-50"
                   onClick={() => endMutation.mutate(assignment.id)}
-                  className="text-xs font-medium text-rose-700 hover:underline"
                 >
                   End
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -676,223 +703,138 @@ function AssignmentsSection({
         )}
 
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm text-slate-700">
-            <span className="block text-xs font-medium text-slate-500">Location</span>
-            <select
-              value={locationId}
-              onChange={(event) => setLocationId(event.target.value)}
-              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            >
+          <FormField label="Location" className="min-w-[200px]">
+            <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
               <option value="">Choose a location</option>
               {locations.map((location) => (
                 <option key={location.id} value={location.id}>
                   {location.name}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="block text-xs font-medium text-slate-500">Role there</span>
-            <select
+            </Select>
+          </FormField>
+          <FormField label="Role there" className="w-36">
+            <Select
               value={assignmentType}
-              onChange={(event) => setAssignmentType(event.target.value as 'MANAGER' | 'STAFF')}
-              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              onChange={(e) => setAssignmentType(e.target.value as 'MANAGER' | 'STAFF')}
             >
               <option value="STAFF">Staff</option>
               <option value="MANAGER">Manager</option>
-            </select>
-          </label>
-          <button
-            type="button"
+            </Select>
+          </FormField>
+          <Button
             onClick={() => assignMutation.mutate()}
-            disabled={!locationId || assignMutation.isPending}
-            className="rounded-md bg-merqo-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-merqo-800 disabled:opacity-60"
+            disabled={!locationId}
+            isLoading={assignMutation.isPending}
+            loadingText="Assigning..."
           >
-            {assignMutation.isPending ? 'Assigning...' : 'Assign'}
-          </button>
+            Assign
+          </Button>
         </div>
 
         {assignMutation.isError ? (
-          <p role="alert" className="mt-3 text-sm text-rose-700">
-            {readError(assignMutation.error)}
-          </p>
+          <div className="mt-4">
+            <ErrorState title="Could not assign location" error={assignMutation.error} />
+          </div>
         ) : null}
         {endMutation.isError ? (
-          <p role="alert" className="mt-3 text-sm text-rose-700">
-            {readError(endMutation.error)}
-          </p>
+          <div className="mt-4">
+            <ErrorState title="Could not end assignment" error={endMutation.error} />
+          </div>
         ) : null}
       </div>
     </section>
   )
 }
 
-/**
- * The effective permissions of the account, with the reason for each one.
- *
- * @param props the permissions and whether the list is still loading
- * @returns the section element
- */
 function EffectivePermissionsSection({
   permissions,
   isLoading,
 }: {
-  permissions: Array<{
-    code: string
-    module: string
-    description: string
-    scope: string
-    locationIds: string[]
-    reasons: string[]
-  }>
+  permissions: ExplainedPermission[]
   isLoading: boolean
 }) {
+  const columns: DataTableColumn<ExplainedPermission>[] = [
+    {
+      key: 'code',
+      header: 'Permission',
+      sortable: true,
+      sortValue: (p) => p.code,
+      render: (permission) => (
+        <div>
+          <span className="font-mono text-xs font-medium text-slate-900">{permission.code}</span>
+          <span className="block text-xs text-slate-500">{permission.description}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'scope',
+      header: 'Scope',
+      render: (permission) =>
+        permission.scope === 'ALL' ? (
+          <Badge tone="primary">Everywhere</Badge>
+        ) : (
+          <Badge tone="neutral">{permission.locationIds.length} location(s)</Badge>
+        ),
+    },
+    {
+      key: 'reasons',
+      header: 'Why',
+      render: (permission) => (
+        <span className="text-xs text-slate-600">{permission.reasons.join(', ')}</span>
+      ),
+    },
+  ]
+
   return (
     <section aria-labelledby="effective-heading" className="space-y-3">
-      <h2 id="effective-heading" className="text-sm font-semibold text-slate-700">
-        Effective permissions
-      </h2>
-      <p className="text-xs text-slate-500">
-        What the account may really do, after the templates and the overrides have been resolved.
-      </p>
-
-      {isLoading ? (
-        <p className="text-sm text-slate-600">Loading the effective permissions...</p>
-      ) : null}
-
-      {!isLoading && permissions.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-          This account holds no effective permission.
+      <div>
+        <h2 id="effective-heading" className="text-sm font-semibold text-slate-900">
+          Effective permissions
+        </h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Resolved permissions after combining templates and overrides.
         </p>
-      ) : null}
+      </div>
 
-      {permissions.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs tracking-wide text-slate-500 uppercase">
-              <tr>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Permission
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Scope
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium">
-                  Why
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {permissions.map((permission) => (
-                <tr key={permission.code}>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-slate-800">{permission.code}</span>
-                    <span className="block text-xs text-slate-500">{permission.description}</span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-600">
-                    {permission.scope === 'ALL'
-                      ? 'Everywhere'
-                      : `${permission.locationIds.length} location(s)`}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-600">
-                    {permission.reasons.join(', ')}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <DataTable
+        columns={columns}
+        rows={permissions}
+        getRowKey={(p) => p.code}
+        isLoading={isLoading}
+        emptyTitle="No effective permissions"
+        emptyDescription="This account holds no effective permission."
+      />
     </section>
   )
 }
 
-/**
- * Describes the role of an account.
- *
- * @param accountType the kind of account
- * @returns the label
- */
 function describeRole(accountType: 'OWNER' | 'MANAGER' | 'STAFF'): string {
-  if (accountType === 'OWNER') {
-    return 'Owner'
-  }
-  if (accountType === 'MANAGER') {
-    return 'Manager'
-  }
+  if (accountType === 'OWNER') return 'Owner'
+  if (accountType === 'MANAGER') return 'Manager'
   return 'Staff'
 }
 
-/**
- * Builds the key of the profile form.
- *
- * The form holds a draft of the profile values. It is rebuilt when the server
- * sends different values, so the draft never shows something the server does
- * not know.
- *
- * @param account the account
- * @returns the key
- */
 function profileKey(account: UserDetail): string {
   return [account.fullName, account.phone ?? '', account.email ?? ''].join('|')
 }
 
-/**
- * Builds the key of the template section.
- *
- * @param account the account
- * @returns the key
- */
 function templateKey(account: UserDetail): string {
   return account.templates.map((template) => template.id).join('|')
 }
 
-/**
- * Builds the key of the override section.
- *
- * @param account the account
- * @returns the key
- */
 function overrideKey(account: UserDetail): string {
   return account.overrides
     .map((override) => `${override.permission}:${override.effect}:${override.locationId ?? '*'}`)
     .join('|')
 }
 
-/**
- * Builds the key of the delegation section.
- *
- * @param account the account
- * @returns the key
- */
 function delegationKey(account: UserDetail): string {
   return account.delegations.join('|')
 }
 
-/**
- * Names a location, when the list of locations is known.
- *
- * @param locations the locations
- * @param locationId the id of the location
- * @returns the name, or the id when the location is unknown
- */
 function describeLocation(locations: LocationSummary[], locationId: string | undefined): string {
-  if (!locationId) {
-    return 'Unknown location'
-  }
+  if (!locationId) return 'Unknown location'
   const match = locations.find((location) => location.id === locationId)
   return match ? match.name : locationId
-}
-
-/**
- * Turns any failure into one sentence the user can act on.
- *
- * @param caught the thrown value
- * @returns the message to show
- */
-function readError(caught: unknown): string {
-  if (caught instanceof ApiError) {
-    return caught.message
-  }
-  return 'Something went wrong. Try again.'
 }

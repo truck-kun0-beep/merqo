@@ -66,10 +66,7 @@ export function requestTransfer(request: RequestTransferRequest): Promise<Transf
  * @param lines the approved numbers
  * @returns the approved transfer
  */
-export function approveTransfer(
-  id: string,
-  lines: TransferLineRequest[],
-): Promise<TransferRow> {
+export function approveTransfer(id: string, lines: TransferLineRequest[]): Promise<TransferRow> {
   return apiRequest<TransferRow>(`/transfers/${id}/approve`, {
     method: 'POST',
     body: JSON.stringify({ lines }),

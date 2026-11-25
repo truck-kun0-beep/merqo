@@ -323,10 +323,7 @@ export function createVariant(
  * @param request the new values
  * @returns the changed variant
  */
-export function updateVariant(
-  id: string,
-  request: UpdateVariantRequest,
-): Promise<VariantSummary> {
+export function updateVariant(id: string, request: UpdateVariantRequest): Promise<VariantSummary> {
   return apiRequest<VariantSummary>(`/catalog/variants/${id}`, {
     method: 'PUT',
     body: JSON.stringify(request),
@@ -480,10 +477,7 @@ export function previewPrice(
  * @param openingLocationId the location the opening stock would go to
  * @returns the errors and the summary of the file
  */
-export function validateImport(
-  file: File,
-  openingLocationId?: string,
-): Promise<ImportValidation> {
+export function validateImport(file: File, openingLocationId?: string): Promise<ImportValidation> {
   return apiRequest<ImportValidation>(
     `/catalog/import/validate${toQueryString({ openingLocationId })}`,
     {

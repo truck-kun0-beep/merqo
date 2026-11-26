@@ -253,6 +253,35 @@ is blocked by browsers that block third party cookies.
 The browser cached the old `index.html`. Hard reload with `Ctrl+Shift+R`, or
 open a private window.
 
+### The sign out leaves the signed in shell on the screen
+
+The user stays on the signed in shell and is sent to the login page at the
+same time. The browser does not clear the session, so the shell keeps the
+user of its cache.
+
+Check the two things that make the sign out work:
+
+1. the answer of the sign in carries the `XSRF-TOKEN` cookie, so the browser
+   has a token that belongs to the session it is in. Without it every request
+   that changes something is refused with a 403, and the sign out is one of
+   them.
+2. the two `Set-Cookie` headers of the answer of the sign in stay two
+   headers. A proxy that joins them into one leaves the browser with one
+   cookie only.
+
+`scripts\check-live.ps1` checks both and says which one failed.
+
+To walk the same path on your own machine, start the backend and the dev
+server and run the local script:
+
+```powershell
+tools\local-signout-check.ps1 -BaseUrl http://localhost:5173
+```
+
+It prints the status of every step and the names of the cookies of every
+answer, never a cookie value. The sign out has to answer 204 and the answer
+of "who am I?" after it has to answer 401.
+
 ---
 
 ## 5. Getting help

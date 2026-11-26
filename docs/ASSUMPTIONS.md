@@ -526,3 +526,47 @@ extends `ConflictException`, so the status stays 409 and the code stays
 `PROMOTION_CONFLICT`. The frontend field is optional, so an answer from an
 older backend is still read correctly. The list of the conflicts is copied when
 the exception is created, so a reported conflict cannot be changed afterwards.
+
+---
+
+## A35 - The sign out is a flag, not an emptied cache
+
+**Decision:** the session provider carries a `signedOut` flag. The flag is
+raised when the user signs out and when the server answers "who am I?" with a
+401. The signed in user is read from the cache only while the flag is down.
+
+**Reason:** `setQueryData` with `undefined` writes nothing at all, and
+`queryClient.clear()` removes the cached answer without telling the observer
+that the session ended. The shell therefore kept showing the user of the
+cached answer after the sign out, and the user was sent to the login page
+while the signed in shell was still on the screen. The flag is the one thing
+both the sign out and the 401 can set, and the screens read it, so the sign
+out takes effect on the very next render.
+
+**Effect:** `isLoading` is also false once the flag is raised, so the screen
+does not show "checking the session" for a moment after every sign out. The
+flag is lowered again by a sign in, so a second sign in in the same tab works.
+
+**Known limitation:** the flag lives in memory. A reload of the page starts a
+new session provider with the flag down, and the session call decides again.
+That is correct, because a reload asks the server who the user is.
+
+---
+
+## A36 - The live check reads every Set-Cookie header on its own
+
+**Decision:** the live check reads the `Set-Cookie` headers with
+`GetValues('Set-Cookie')` and not with the indexer of the header collection.
+
+**Reason:** the indexer of a repeated header joins the values into one string
+with a comma. The answer of the sign in carries two `Set-Cookie` headers, so
+the indexer handed back one string that holds both cookies. The strict jar
+built from that string held neither of them, and the check reported "no
+session cookie was written" on a deployment that was completely fine. The
+check now reads the headers one by one, the way the browser reads them.
+
+**Effect:** the same fix was applied to `tools\local-signout-check.ps1`, the
+script that walks the sign out through the local proxy. That script builds its
+strict jar from the `Set-Cookie` headers of the sign in answer and not from the
+jar of the session, so it proves the same thing the browser proves. The two
+scripts now report the same thing about the same deployment.

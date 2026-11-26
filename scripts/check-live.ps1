@@ -129,6 +129,38 @@ function Get-DnsName {
 }
 
 # ---------------------------------------------------------------------------
+# Reads every Set-Cookie header of an answer.
+#
+# <p><b>Why the indexer is not enough.</b> The indexer of the header
+# collection joins the values of a repeated header into one string with a
+# comma. The answer of the sign in carries two Set-Cookie headers, so the
+# indexer hands back one string that holds both cookies and the jar built
+# from it holds neither. The values are read one by one with GetValues
+# instead, so every cookie keeps its own line.
+#
+# @param $Response the answer of the request
+# @returns the value of every Set-Cookie header
+# ---------------------------------------------------------------------------
+function Get-SetCookieHeaders {
+    param($Response)
+
+    $values = @()
+    try {
+        $values = @($Response.BaseResponse.Headers.GetValues('Set-Cookie'))
+    } catch {
+        $values = @()
+    }
+    if ($values.Count -eq 0) {
+        try {
+            $values = @($Response.Headers['Set-Cookie'])
+        } catch {
+            $values = @()
+        }
+    }
+    return $values
+}
+
+# ---------------------------------------------------------------------------
 # One request. The answer is the body, the status is written to $Status and the
 # Set-Cookie headers are written to $SetCookies.
 #
@@ -174,7 +206,7 @@ function Invoke-Check {
         $response = Invoke-WebRequest @parameters
         $script:Status = [int] $response.StatusCode
         $script:Body = $response.Content
-        $script:SetCookies = @($response.Headers['Set-Cookie'])
+        $script:SetCookies = Get-SetCookieHeaders -Response $response
     } catch {
         # Invoke-WebRequest throws for every status above 299. The answer is
         # still in the exception, so the body is read from there.

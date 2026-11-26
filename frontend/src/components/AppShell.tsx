@@ -113,6 +113,18 @@ export default function AppShell() {
       items: [{ to: '/', label: 'Overview', end: true, visible: true }],
     },
     {
+      id: 'pos',
+      label: 'Point of sale',
+      items: [
+        { to: '/pos', label: 'Register', end: true, visible: can('POS_SELL') },
+        {
+          to: '/pos/sales',
+          label: 'Sales history',
+          visible: can('POS_SELL') || can('POS_REFUND') || can('POS_REPRINT'),
+        },
+      ],
+    },
+    {
       id: 'catalog',
       label: 'Catalog',
       items: [

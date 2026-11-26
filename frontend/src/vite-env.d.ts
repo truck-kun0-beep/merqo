@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_API_PROXY_TARGET?: string
   readonly VITE_PORT?: string
   readonly VITE_PREVIEW_PORT?: string
+  readonly VITE_POS_MOCKS?: string
 }
 
 interface ImportMeta {

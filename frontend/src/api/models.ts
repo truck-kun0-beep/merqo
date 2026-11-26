@@ -754,3 +754,116 @@ export interface ReceiptData {
   footerText: string | null
   isDuplicate?: boolean
 }
+
+// ---------------------------------------------------------------------------
+// Point of Sale & Sales History (mocked contract for backend alignment).
+// ---------------------------------------------------------------------------
+
+export type PaymentMethod = 'CASH' | 'BKASH' | 'NAGAD' | 'CARD'
+
+export type PosDiscountType = 'PERCENT' | 'FIXED'
+
+export type SaleStatus = 'COMPLETED' | 'PARTIALLY_RETURNED' | 'RETURNED'
+
+export interface PosLookupResponse {
+  variantId: string
+  productId: string
+  productName: string
+  sku: string
+  variantLabel: string
+  barcode: string
+  listPrice: string
+  promotionName: string | null
+  promotionDiscount: string
+  netUnitPrice: string
+  taxRatePercent: string
+  taxInclusive: boolean
+  availableStock: number
+  belowCost: boolean
+}
+
+export interface MethodBreakdown {
+  method: PaymentMethod
+  expected: string
+  counted: string | null
+  difference: string | null
+}
+
+export interface CashSessionSummary {
+  id: string
+  locationId: string
+  cashierUsername: string
+  openedAt: string
+  closedAt: string | null
+  status: 'OPEN' | 'CLOSED'
+  openingCash: string
+  expectedCash: string
+  countedCash: string | null
+  variance: string | null
+  saleCount: number
+  refundTotal: string
+  byMethod: MethodBreakdown[]
+}
+
+export interface BelowCostWarning {
+  variantId: string
+  sku: string
+  netUnitPrice: string
+  costPrice: string
+}
+
+export interface SaleLineSummary {
+  id: string
+  variantId: string
+  sku: string
+  productName: string
+  variantLabel: string
+  quantity: number
+  returnedQuantity: number
+  unitPrice: string
+  promotionDiscount: string
+  manualDiscount: string
+  tax: string
+  lineTotal: string
+}
+
+export interface SaleReturnRecord {
+  id: string
+  refundNumber: string
+  returnedAt: string
+  actorUsername: string
+  reason: string
+  totalRefund: string
+  lines: Array<{
+    saleLineId: string
+    sku: string
+    quantity: number
+    refundAmount: string
+  }>
+}
+
+export interface SaleSummary {
+  id: string
+  receiptNumber: string
+  locationId: string
+  locationName: string
+  cashSessionId: string
+  cashierUsername: string
+  cashierName: string
+  soldAt: string
+  status: SaleStatus
+  subtotal: string
+  discountTotal: string
+  taxTotal: string
+  total: string
+  paymentMethod: PaymentMethod
+  paymentReference: string | null
+  itemCount: number
+}
+
+export interface SaleDetail extends SaleSummary {
+  lines: SaleLineSummary[]
+  returns: SaleReturnRecord[]
+  receipt: ReceiptData
+  belowCostWarnings?: BelowCostWarning[]
+}

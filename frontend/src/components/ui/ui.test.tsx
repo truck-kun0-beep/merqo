@@ -202,4 +202,26 @@ describe('UI design system components', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Notify' }))
     expect(screen.getByText('Saved item')).toBeInTheDocument()
   })
+
+  it('traps Tab focus inside Modal dialog', async () => {
+    render(
+      <div>
+        <Button>Outside button</Button>
+        <Modal open title="Trap test" onClose={() => {}} footer={<Button>Footer action</Button>}>
+          <Input placeholder="Inside input" />
+        </Modal>
+      </div>,
+    )
+
+    const closeBtn = screen.getByRole('button', { name: 'Close dialog' })
+    const footerBtn = screen.getByRole('button', { name: 'Footer action' })
+    footerBtn.focus()
+    expect(footerBtn).toHaveFocus()
+
+    await userEvent.tab()
+    expect(closeBtn).toHaveFocus()
+
+    await userEvent.tab({ shift: true })
+    expect(footerBtn).toHaveFocus()
+  })
 })

@@ -267,7 +267,7 @@ export default function InventoryPage() {
       ) : null}
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-        <FormField label="Location" className="min-w-[200px]">
+        <FormField label="Location" className="w-full sm:w-auto sm:min-w-[200px]">
           <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
             <option value="">All permitted locations</option>
             {scopedLocations.map((loc) => (
@@ -279,13 +279,13 @@ export default function InventoryPage() {
         </FormField>
 
         <form
-          className="flex flex-1 flex-wrap items-end gap-2"
+          className="flex w-full flex-wrap items-end gap-2 sm:w-auto sm:flex-1"
           onSubmit={(e) => {
             e.preventDefault()
             setAppliedSearch(search.trim())
           }}
         >
-          <FormField label="Search SKU or product" className="min-w-[200px] flex-1">
+          <FormField label="Search SKU or product" className="w-full sm:min-w-[200px] sm:flex-1">
             <Input
               type="search"
               value={search}

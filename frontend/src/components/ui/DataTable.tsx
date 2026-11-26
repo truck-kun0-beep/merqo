@@ -162,7 +162,12 @@ export function DataTable<T>({
                       <button
                         type="button"
                         onClick={() => handleToggleSort(col.key)}
-                        className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-merqo-500 rounded"
+                        aria-label={
+                          typeof col.header === 'string'
+                            ? `Sort by ${col.header}`
+                            : `Sort by ${col.key}`
+                        }
+                        className="inline-flex items-center gap-1 rounded font-medium text-slate-600 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-merqo-500"
                       >
                         <span>{col.header}</span>
                         <span aria-hidden="true" className="text-[10px]">

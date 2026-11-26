@@ -29,16 +29,26 @@ if (!container) {
   throw new Error('The root element is missing from index.html')
 }
 
-createRoot(container).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider>
-        <ToastProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </ToastProvider>
-      </SessionProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-)
+async function bootstrap() {
+  // Dev-only POS mocks: statically tree-shaken from production builds.
+  if (import.meta.env.DEV && import.meta.env.VITE_POS_MOCKS === '1') {
+    const { installPosMocks } = await import('./dev/posMocks')
+    installPosMocks()
+  }
+
+  createRoot(container!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider>
+          <ToastProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </ToastProvider>
+        </SessionProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}
+
+void bootstrap()

@@ -83,10 +83,10 @@ Tracks every required unit, integration, hardening, concurrency, invariant, audi
 | Requirement | Test class and method | Status |
 | --- | --- | --- |
 | Second open session refused (`409 SESSION_ALREADY_OPEN`); closed session immutable (trigger) | `CashSessionIntegrationTest.openSummaryCloseAndImmutabilityTrigger` | covered |
-| Closing computes expected figures from recorded sales & refunds; non-zero difference requires note | `CashSessionIntegrationTest` (empty); closing WITH sales + cash/non-cash refunds | missing |
-| Append-only DB triggers refuse `UPDATE`/`DELETE` on all 6 tables + repositories expose no mutation/delete paths | `PosHardeningIntegrationTest.appendOnlyTriggersOnSixTables`; repo interface check | missing |
-| Audit rows exist for approvals, failed approvals, reprints, returns, below-cost sales, session close difference, PIN change, inspection resolve | `PosHardeningIntegrationTest` + `ReturnAndInspectionIntegrationTest` (`RECEIPT_REPRINTED` & `POS_RETURN_CREATED` missing) | missing |
+| Closing computes expected figures from recorded sales & refunds; non-zero difference requires note | `CashSessionIntegrationTest`, `PosGroup6SessionAuditDenyIntegrationTest.sessionReconciliationAcrossMethodsAndAuditRows` | covered |
+| Append-only DB triggers refuse `UPDATE`/`DELETE` on all 6 tables + repositories expose no mutation/delete paths | `PosHardeningIntegrationTest.appendOnlyTriggersOnSixTables`, `PosGroup6SessionAuditDenyIntegrationTest.repositoriesAndDefaultDeny` | covered |
+| Audit rows exist for approvals, failed approvals, reprints, returns, below-cost sales, session close difference, PIN change, inspection resolve | `PosHardeningIntegrationTest.costPrivacyAndAuditRows`, `ReturnAndInspectionIntegrationTest`, `PosGroup6SessionAuditDenyIntegrationTest.sessionReconciliationAcrossMethodsAndAuditRows` | covered |
 | Concurrency races (`ExecutorService` + `CountDownLatch`): last unit, idempotent submit, last returnable unit, simultaneous session opens, simultaneous TrxID | `PosHardeningIntegrationTest.concurrencyRaces`, `CashSessionIntegrationTest.concurrentSessionOpensYieldOneWinner` | covered |
 | Stock invariant across sales, returns & inspection resolutions with exact formula | `PosHardeningIntegrationTest.stockMovementAndBalanceInvariant` | covered |
 | Demo data contributor idempotent & `DEMO_MODE=false` seeds nothing | `DemoPosIntegrationTest.demoPosSeedingIsIdempotent`, `DemoModeOffIntegrationTest` | covered |
-| Phase 1 & 2 suites pass; every new Phase 3 endpoint covered by default deny (`401` unauthenticated) | `PublicEndpointPolicyTest` (explicit Phase 3 `/pos/**`, `/inventory/inspections`, `/auth/approval-pin` `401` check missing) | missing |
+| Phase 1 & 2 suites pass; every new Phase 3 endpoint covered by default deny (`401` unauthenticated) | `PublicEndpointPolicyTest`, `PosGroup6SessionAuditDenyIntegrationTest.repositoriesAndDefaultDeny` | covered |

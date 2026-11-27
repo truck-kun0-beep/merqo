@@ -1,35 +1,64 @@
 import type {
+  ApprovalTokenResponse,
+  BelowCostWarning,
   CashSessionSummary,
+  InspectionItem,
   PaymentMethod,
+  ResolveInspectionResponse,
   SaleDetail,
   SaleReturnRecord,
   SaleSummary,
 } from '../api/models'
 import type {
   CloseCashSessionRequest,
+  CreateApprovalRequest,
   CreateReturnRequest,
   CreateSaleRequest,
   OpenCashSessionRequest,
-  PriceCheckRequest,
+  ResolveInspectionRequest,
+  SetApprovalPinRequest,
 } from '../api/pos'
 import {
   buildEmptySession,
+  buildInitialMockInspections,
   buildInitialMockVariants,
   buildSeededSales,
   toLookupResponse,
   type MockVariantRecord,
 } from './posMockData'
 
-const MANAGER_APPROVAL_PIN = '1234'
+const DEFAULT_APPROVAL_PIN = '5839'
 const DEFAULT_CASHIER_DISCOUNT_LIMIT_PERCENT = 10
+
+interface ApprovalTokenEntry {
+  token: string
+  locationId: string
+  maxDiscountPercent: number
+  used: boolean
+}
+
+interface IdempotencyEntry {
+  payloadHash: string
+  response: unknown
+  status: number
+}
 
 interface MockStore {
   variants: MockVariantRecord[]
   sessions: Map<string, CashSessionSummary>
   sales: SaleDetail[]
+  returnsBySale: Map<string, SaleReturnRecord[]>
+  reprintCounts: Map<string, number>
+  inspections: InspectionItem[]
+  usedReferences: Set<string>
+  approvalPin: string
+  failedPinAttempts: number
+  approvalTokens: Map<string, ApprovalTokenEntry>
+  idempotency: Map<string, IdempotencyEntry>
   nextReceiptNumber: number
   nextSessionSeq: number
   nextReturnSeq: number
+  nextTokenSeq: number
 }
 
 function createStore(): MockStore {
@@ -37,9 +66,18 @@ function createStore(): MockStore {
     variants: buildInitialMockVariants(),
     sessions: new Map(),
     sales: buildSeededSales(),
+    returnsBySale: new Map(),
+    reprintCounts: new Map(),
+    inspections: buildInitialMockInspections(),
+    usedReferences: new Set(['BKX998812']),
+    approvalPin: DEFAULT_APPROVAL_PIN,
+    failedPinAttempts: 0,
+    approvalTokens: new Map(),
+    idempotency: new Map(),
     nextReceiptNumber: 103,
     nextSessionSeq: 1,
     nextReturnSeq: 1,
+    nextTokenSeq: 1,
   }
 }
 
@@ -96,18 +134,11 @@ function toSaleSummary(sale: SaleDetail): SaleSummary {
     receiptNumber: sale.receiptNumber,
     locationId: sale.locationId,
     locationName: sale.locationName,
-    cashSessionId: sale.cashSessionId,
     cashierUsername: sale.cashierUsername,
-    cashierName: sale.cashierName,
-    soldAt: sale.soldAt,
-    status: sale.status,
-    subtotal: sale.subtotal,
-    discountTotal: sale.discountTotal,
-    taxTotal: sale.taxTotal,
+    createdAt: sale.createdAt,
+    itemCount: sale.lines.reduce((acc, l) => acc + l.quantity, 0),
     total: sale.total,
     paymentMethod: sale.paymentMethod,
-    paymentReference: sale.paymentReference,
-    itemCount: sale.itemCount,
   }
 }
 
@@ -115,19 +146,39 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Response> {
+function readHeader(headers: HeadersInit | undefined, name: string): string | null {
+  if (!headers) return null
+  if (headers instanceof Headers) {
+    return headers.get(name)
+  }
+  const target = name.toLowerCase()
+  if (Array.isArray(headers)) {
+    const pair = headers.find(([k]) => k.toLowerCase() === target)
+    return pair ? pair[1] : null
+  }
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === target) return v
+  }
+  return null
+}
+
+function isRejectedPan(raw: string): boolean {
+  const digits = raw.replace(/\D/g, '')
+  return digits.length === 13 || digits.length === 16 || digits.length === 19 || digits.length >= 12
+}
+
+async function handleMockRequest(url: URL, init?: RequestInit): Promise<Response> {
   const path = url.pathname.replace(/^\/api\/v1/, '')
   const method = (init?.method ?? 'GET').toUpperCase()
   const rawBody = typeof init?.body === 'string' ? init.body : undefined
   const body = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {}
 
-  // Simulated slow response when ?slow=1 or barcode starts with SLOW
   if (url.searchParams.get('slow') === '1' || url.searchParams.get('barcode') === '9999999999991') {
     await delay(1000)
   }
 
-  // 1. GET /pos/lookup
-  if (method === 'GET' && path === '/pos/lookup') {
+  // 1. GET /catalog/lookup?barcode=...&scope=POS&locationId=...
+  if (method === 'GET' && path === '/catalog/lookup') {
     const barcode = (url.searchParams.get('barcode') ?? '').trim()
     const locationId = url.searchParams.get('locationId') ?? 'loc-1'
     const match = store.variants.find((v) => v.barcodes.includes(barcode))
@@ -151,8 +202,8 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
     return jsonResponse({ session: existing ?? null })
   }
 
-  // 3. POST /pos/sessions/open
-  if (method === 'POST' && path === '/pos/sessions/open') {
+  // 3. POST /pos/sessions
+  if (method === 'POST' && path === '/pos/sessions') {
     const req = body as unknown as OpenCashSessionRequest
     const alreadyOpen = Array.from(store.sessions.values()).find(
       (s) => s.locationId === req.locationId && s.status === 'OPEN',
@@ -160,65 +211,162 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
     if (alreadyOpen) {
       return problemResponse(
         409,
-        'CONFLICT',
+        'SESSION_ALREADY_OPEN',
         'A cash session is already open at this location.',
         url.pathname,
       )
     }
-    const id = `sess-${store.nextSessionSeq++}`
-    const session = buildEmptySession(id, req.locationId, fromCents(toCents(req.openingCash)))
+    const seq = store.nextSessionSeq++
+    const id = `sess-${seq}`
+    const session = buildEmptySession(
+      id,
+      `CS-2026-${String(seq).padStart(4, '0')}`,
+      req.locationId,
+      fromCents(toCents(req.openingCash)),
+    )
     store.sessions.set(id, session)
     return jsonResponse(session, 201)
   }
 
-  // 4. POST /pos/sessions/{id}/close
+  // 4. GET /pos/sessions/{id}/summary
+  const summaryMatch = path.match(/^\/pos\/sessions\/([^/]+)\/summary$/)
+  if (method === 'GET' && summaryMatch) {
+    const session = store.sessions.get(summaryMatch[1])
+    if (!session) {
+      return problemResponse(404, 'NOT_FOUND', 'Cash session not found.', url.pathname)
+    }
+    return jsonResponse(session)
+  }
+
+  // 5. POST /pos/sessions/{id}/close
   const closeMatch = path.match(/^\/pos\/sessions\/([^/]+)\/close$/)
   if (method === 'POST' && closeMatch) {
     const sessionId = closeMatch[1]
     const session = store.sessions.get(sessionId)
-    if (!session || session.status !== 'OPEN') {
-      return problemResponse(409, 'CONFLICT', 'Session is not open.', url.pathname)
+    if (!session) {
+      return problemResponse(404, 'NOT_FOUND', 'Session not found.', url.pathname)
+    }
+    if (session.status !== 'OPEN') {
+      return problemResponse(409, 'SESSION_NOT_OPEN', 'Session is not open.', url.pathname)
     }
     const req = body as unknown as CloseCashSessionRequest
-    const countedCents = toCents(req.countedCash)
+    const countedCashCents = toCents(req.countedCash)
+    const countedByMethod: Record<PaymentMethod, string | null> = {
+      CASH: fromCents(countedCashCents),
+      BKASH: req.countedBkash !== undefined ? fromCents(toCents(req.countedBkash)) : null,
+      NAGAD: req.countedNagad !== undefined ? fromCents(toCents(req.countedNagad)) : null,
+      CARD: req.countedCard !== undefined ? fromCents(toCents(req.countedCard)) : null,
+    }
     const expectedCashCents = toCents(session.expectedCash)
-    const diffCents = countedCents - expectedCashCents
+    const diffCents = countedCashCents - expectedCashCents
     const closed: CashSessionSummary = {
       ...session,
       status: 'CLOSED',
       closedAt: new Date().toISOString(),
-      countedCash: fromCents(countedCents),
+      countedCash: fromCents(countedCashCents),
       variance: fromCents(diffCents),
-      byMethod: session.byMethod.map((entry) =>
-        entry.method === 'CASH'
-          ? {
-              ...entry,
-              counted: fromCents(countedCents),
-              difference: fromCents(diffCents),
-            }
-          : entry,
-      ),
+      closeNote: req.note ?? null,
+      byMethod: session.byMethod.map((entry) => {
+        const counted = countedByMethod[entry.method]
+        if (counted === null) return entry
+        const diff = toCents(counted) - toCents(entry.expected)
+        return {
+          ...entry,
+          counted,
+          difference: fromCents(diff),
+        }
+      }),
     }
     store.sessions.set(sessionId, closed)
     return jsonResponse(closed)
   }
 
-  // 5. POST /pos/price-check
-  if (method === 'POST' && path === '/pos/price-check') {
-    const req = body as unknown as PriceCheckRequest
-    const warnings = computeBelowCostWarnings(req)
-    return jsonResponse({ belowCostWarnings: warnings })
+  // 6. PUT /auth/approval-pin
+  if (method === 'PUT' && path === '/auth/approval-pin') {
+    const req = body as unknown as SetApprovalPinRequest
+    if (!req.currentPassword) {
+      return problemResponse(401, 'INVALID_CREDENTIALS', 'Current password is incorrect.', url.pathname)
+    }
+    if (!/^\d{4,8}$/.test(req.pin)) {
+      return problemResponse(
+        422,
+        'PIN_POLICY',
+        'Approval PIN must be 4 to 8 digits.',
+        url.pathname,
+      )
+    }
+    if (new Set(req.pin.split('')).size <= 1) {
+      return problemResponse(
+        422,
+        'PIN_POLICY',
+        'Approval PIN cannot repeat the same digit.',
+        url.pathname,
+      )
+    }
+    store.approvalPin = req.pin
+    store.failedPinAttempts = 0
+    return new Response(null, { status: 204 })
   }
 
-  // 6. POST /sales
-  if (method === 'POST' && path === '/sales') {
+  // 7. POST /pos/approvals
+  if (method === 'POST' && path === '/pos/approvals') {
+    const req = body as unknown as CreateApprovalRequest
+    if (store.failedPinAttempts >= 5) {
+      return problemResponse(
+        423,
+        'PIN_LOCKED',
+        'Too many invalid PIN attempts. Try again in 15 minutes.',
+        url.pathname,
+      )
+    }
+    if (req.pin !== store.approvalPin) {
+      store.failedPinAttempts++
+      return problemResponse(422, 'APPROVAL_INVALID', 'Invalid approval PIN.', url.pathname)
+    }
+    store.failedPinAttempts = 0
+    const token = `apv-${store.nextTokenSeq++}-${Date.now().toString(36)}`
+    store.approvalTokens.set(token, {
+      token,
+      locationId: req.locationId,
+      maxDiscountPercent: Number(req.maxDiscountPercent),
+      used: false,
+    })
+    const resp: ApprovalTokenResponse = {
+      approvalToken: token,
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      maxDiscountPercent: String(req.maxDiscountPercent),
+    }
+    return jsonResponse(resp, 201)
+  }
+
+  // 8. POST /pos/sales
+  if (method === 'POST' && path === '/pos/sales') {
     const req = body as unknown as CreateSaleRequest
-    const openSession = store.sessions.get(req.cashSessionId)
-    if (
-      !openSession ||
-      openSession.status !== 'OPEN' ||
-      openSession.locationId !== req.locationId
-    ) {
+    const idemKey = readHeader(init?.headers, 'Idempotency-Key') ?? req.idempotencyKey
+    if (idemKey) {
+      const normalized = JSON.stringify({ ...req, idempotencyKey: undefined })
+      const existing = store.idempotency.get(`sale:${idemKey}`)
+      if (existing) {
+        if (existing.payloadHash !== normalized) {
+          return problemResponse(
+            409,
+            'IDEMPOTENCY_CONFLICT',
+            'Idempotency-Key was reused with a different request payload.',
+            url.pathname,
+          )
+        }
+        return jsonResponse(existing.response, existing.status)
+      }
+    }
+
+    if (!req.lines || req.lines.length === 0) {
+      return problemResponse(422, 'EMPTY_CART', 'Sale must contain at least one line.', url.pathname)
+    }
+
+    const openSession = Array.from(store.sessions.values()).find(
+      (s) => s.locationId === req.locationId && s.status === 'OPEN',
+    )
+    if (!openSession) {
       return problemResponse(
         409,
         'POS_SESSION_REQUIRED',
@@ -227,37 +375,42 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       )
     }
 
-    // Payment validation
+    const paymentRef = req.payment.reference?.trim() || null
     if (req.payment.method === 'BKASH' || req.payment.method === 'NAGAD') {
-      if (!req.payment.trxId || req.payment.trxId.trim().length < 4) {
+      if (!paymentRef) {
         return problemResponse(
           422,
-          'VALIDATION_FAILED',
-          `${req.payment.method} requires a valid transaction ID (TrxID).`,
+          'PAYMENT_REFERENCE_REQUIRED',
+          `${req.payment.method} requires a transaction ID (TrxID).`,
+          url.pathname,
+        )
+      }
+      if (store.usedReferences.has(paymentRef.toUpperCase())) {
+        return problemResponse(
+          409,
+          'DUPLICATE_REFERENCE',
+          `Transaction reference "${paymentRef}" has already been recorded.`,
           url.pathname,
         )
       }
     }
-    if (req.payment.method === 'CARD' && req.payment.cardReference) {
-      const digitsOnly = req.payment.cardReference.replace(/\D/g, '')
-      if (digitsOnly.length > 6 && !req.payment.cardReference.toUpperCase().startsWith('AUTH')) {
-        return problemResponse(
-          422,
-          'VALIDATION_FAILED',
-          'Do not enter a full card number. Provide only the last 4 digits or approval code.',
-          url.pathname,
-        )
-      }
+    if (paymentRef && isRejectedPan(paymentRef)) {
+      return problemResponse(
+        422,
+        'CARD_NUMBER_REJECTED',
+        'Full card numbers must never be sent or stored.',
+        url.pathname,
+      )
     }
 
-    // Stock & pricing calculation
     let subtotalCents = 0
     let promoDiscountCents = 0
     let manualLineDiscountCents = 0
     let taxCents = 0
-    let totalListBeforeDiscountCents = 0
+    let totalAfterPromoCents = 0
 
     const saleLines: SaleDetail['lines'] = []
+    const belowCostWarnings: BelowCostWarning[] = []
 
     for (let i = 0; i < req.lines.length; i++) {
       const lineReq = req.lines[i]
@@ -278,9 +431,8 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
 
       const unitListCents = toCents(variant.listPrice)
       const unitPromoCents = toCents(variant.promotionDiscount)
-      const lineGrossCents = unitListCents * lineReq.quantity
+      const afterPromoCents = Math.max(0, unitListCents - unitPromoCents) * lineReq.quantity
       const linePromoCents = unitPromoCents * lineReq.quantity
-      const afterPromoCents = Math.max(0, lineGrossCents - linePromoCents)
 
       let lineManualCents = 0
       if (lineReq.manualDiscountType === 'PERCENT' && lineReq.manualDiscountValue) {
@@ -293,8 +445,19 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       const lineNetCents = afterPromoCents - lineManualCents
       const taxRate = Number(variant.taxRatePercent) || 0
       const lineTaxCents = Math.round((lineNetCents * taxRate) / 100)
+      const netUnitCents = Math.round(lineNetCents / Math.max(1, lineReq.quantity))
+      const costCents = toCents(variant.costPrice)
 
-      totalListBeforeDiscountCents += afterPromoCents
+      if (netUnitCents < costCents) {
+        belowCostWarnings.push({
+          variantId: variant.variantId,
+          sku: variant.sku,
+          netUnitPrice: fromCents(netUnitCents),
+          costPrice: variant.costPrice,
+        })
+      }
+
+      totalAfterPromoCents += afterPromoCents
       subtotalCents += lineNetCents
       promoDiscountCents += linePromoCents
       manualLineDiscountCents += lineManualCents
@@ -302,17 +465,27 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
 
       saleLines.push({
         id: `sl-${Date.now()}-${i}`,
+        lineIndex: i,
         variantId: variant.variantId,
-        sku: variant.sku,
         productName: variant.productName,
-        variantLabel: variant.variantLabel,
+        sku: variant.sku,
+        barcode: variant.barcodes[0] ?? null,
+        color: variant.color,
+        size: variant.size,
         quantity: lineReq.quantity,
-        returnedQuantity: 0,
-        unitPrice: variant.listPrice,
-        promotionDiscount: fromCents(linePromoCents),
+        listPrice: variant.listPrice,
+        promotionName: variant.promotionName,
+        promotionDiscount: variant.promotionDiscount,
         manualDiscount: fromCents(lineManualCents),
-        tax: fromCents(lineTaxCents),
+        billDiscountAllocated: '0.00',
+        netUnitPrice: fromCents(netUnitCents),
+        taxRatePercent: variant.taxRatePercent,
+        taxInclusive: variant.taxInclusive,
+        taxAmount: fromCents(lineTaxCents),
+        lineSubtotal: fromCents(lineNetCents),
         lineTotal: fromCents(lineNetCents + lineTaxCents),
+        unitCost: variant.costPrice,
+        belowCost: netUnitCents < costCents,
       })
     }
 
@@ -326,17 +499,26 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
 
     const totalManualCents = manualLineDiscountCents + billDiscountCents
     const effectiveManualPercent =
-      totalListBeforeDiscountCents > 0 ? (totalManualCents / totalListBeforeDiscountCents) * 100 : 0
+      totalAfterPromoCents > 0 ? (totalManualCents / totalAfterPromoCents) * 100 : 0
 
     if (effectiveManualPercent > DEFAULT_CASHIER_DISCOUNT_LIMIT_PERCENT) {
-      if (req.managerPin !== MANAGER_APPROVAL_PIN) {
+      const tokenEntry = req.approvalToken ? store.approvalTokens.get(req.approvalToken) : undefined
+      if (
+        !tokenEntry ||
+        tokenEntry.used ||
+        tokenEntry.locationId !== req.locationId ||
+        effectiveManualPercent > tokenEntry.maxDiscountPercent + 0.01
+      ) {
         return problemResponse(
           422,
-          'DISCOUNT_LIMIT_EXCEEDED',
-          `Manual discount (${effectiveManualPercent.toFixed(1)}%) exceeds your ${DEFAULT_CASHIER_DISCOUNT_LIMIT_PERCENT}% limit. Enter manager approval PIN.`,
+          req.approvalToken ? 'APPROVAL_INVALID' : 'DISCOUNT_LIMIT_EXCEEDED',
+          req.approvalToken
+            ? 'Approval token is invalid or expired.'
+            : `Manual discount exceeds ${DEFAULT_CASHIER_DISCOUNT_LIMIT_PERCENT}% limit.`,
           url.pathname,
         )
       }
+      tokenEntry.used = true
     }
 
     const discountedSubtotalCents = subtotalCents - billDiscountCents
@@ -344,69 +526,78 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       subtotalCents > 0 ? Math.round((taxCents * discountedSubtotalCents) / subtotalCents) : 0
     const totalCents = discountedSubtotalCents + adjustedTaxCents
 
+    let changeGivenCents = 0
+    let tenderedStr: string | null = null
     if (req.payment.method === 'CASH') {
-      const givenCents = toCents(req.payment.amountGiven)
-      if (givenCents < totalCents) {
+      const tenderedCents = toCents(req.payment.tendered)
+      if (tenderedCents < totalCents) {
         return problemResponse(
           422,
-          'VALIDATION_FAILED',
-          'Cash given must cover the total amount.',
+          'PAYMENT_INSUFFICIENT',
+          'Cash tendered must cover the total amount.',
           url.pathname,
         )
       }
+      changeGivenCents = tenderedCents - totalCents
+      tenderedStr = fromCents(tenderedCents)
     }
 
-    // Deduct stock
+    // Deduct stock and record unique payment reference
     for (const lineReq of req.lines) {
       const variant = store.variants.find((v) => v.variantId === lineReq.variantId)!
       const current =
         variant.stockByLocation[req.locationId] ?? variant.stockByLocation.default ?? 10
       variant.stockByLocation[req.locationId] = current - lineReq.quantity
     }
+    if ((req.payment.method === 'BKASH' || req.payment.method === 'NAGAD') && paymentRef) {
+      store.usedReferences.add(paymentRef.toUpperCase())
+    }
 
     const receiptNumber = `MQ-2026-${String(store.nextReceiptNumber++).padStart(6, '0')}`
-    const soldAt = new Date().toISOString()
+    const createdAt = new Date().toISOString()
     const totalDiscountCents = promoDiscountCents + totalManualCents
-    const paymentRef =
-      req.payment.method === 'CASH'
-        ? null
-        : (req.payment.trxId ?? req.payment.cardReference ?? null)
+    const saleId = `sale-${Date.now()}-${store.nextReceiptNumber}`
 
-    const saleId = `sale-${Date.now()}`
     const sale: SaleDetail = {
       id: saleId,
       receiptNumber,
       locationId: req.locationId,
       locationName: 'Active Branch',
       cashSessionId: openSession.id,
+      cashierId: openSession.cashierId,
       cashierUsername: openSession.cashierUsername,
-      cashierName: 'Counter Cashier',
-      soldAt,
-      status: 'COMPLETED',
+      createdAt,
       subtotal: fromCents(discountedSubtotalCents),
-      discountTotal: fromCents(totalDiscountCents),
+      promotionDiscount: fromCents(promoDiscountCents),
+      manualDiscount: fromCents(totalManualCents),
       taxTotal: fromCents(adjustedTaxCents),
       total: fromCents(totalCents),
       paymentMethod: req.payment.method,
-      paymentReference: paymentRef,
-      itemCount: req.lines.reduce((acc, l) => acc + l.quantity, 0),
+      changeGiven: fromCents(changeGivenCents),
+      payment: {
+        method: req.payment.method,
+        amount: fromCents(totalCents),
+        tendered: tenderedStr,
+        changeGiven: fromCents(changeGivenCents),
+        reference: paymentRef,
+      },
       lines: saleLines,
-      returns: [],
-      belowCostWarnings: computeBelowCostWarnings(req),
+      note: req.note ?? null,
+      belowCostWarnings,
       receipt: {
         businessName: 'Merqo Store',
         branchName: 'Active Branch',
         branchAddress: 'Road 11, Banani, Dhaka',
         branchPhone: '+880 1700-000111',
         receiptNumber,
-        issuedAt: soldAt,
+        issuedAt: createdAt,
         cashierName: 'Counter Cashier',
         lines: saleLines.map((l) => ({
           name: l.productName,
-          variant: l.variantLabel,
+          variant: [l.color, l.size].filter(Boolean).join(' / ') || null,
           quantity: l.quantity,
-          unitPrice: l.unitPrice,
-          discount: fromCents(toCents(l.promotionDiscount) + toCents(l.manualDiscount)),
+          unitPrice: l.listPrice,
+          discount: fromCents(toCents(l.promotionDiscount) * l.quantity + toCents(l.manualDiscount)),
           lineTotal: l.lineTotal,
         })),
         subtotal: fromCents(discountedSubtotalCents),
@@ -421,8 +612,8 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
     }
 
     store.sales.unshift(sale)
+    store.returnsBySale.set(sale.id, [])
 
-    // Update cash session totals
     const nextExpectedCash =
       req.payment.method === 'CASH'
         ? fromCents(toCents(openSession.expectedCash) + totalCents)
@@ -438,11 +629,19 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       ),
     })
 
+    if (idemKey) {
+      store.idempotency.set(`sale:${idemKey}`, {
+        payloadHash: JSON.stringify({ ...req, idempotencyKey: undefined }),
+        response: sale,
+        status: 201,
+      })
+    }
+
     return jsonResponse(sale, 201)
   }
 
-  // 7. GET /sales
-  if (method === 'GET' && path === '/sales') {
+  // 9. GET /pos/sales
+  if (method === 'GET' && path === '/pos/sales') {
     const locationId = url.searchParams.get('locationId')
     const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
     const fromDate = url.searchParams.get('fromDate')
@@ -452,7 +651,6 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
 
     let filtered = store.sales
     if (locationId) {
-      // Include seeded sales if matching locationId or if store seeded default
       filtered = filtered.filter(
         (s) => s.locationId === locationId || s.id.startsWith('sale-seed-'),
       )
@@ -461,10 +659,10 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       filtered = filtered.filter((s) => s.receiptNumber.toLowerCase().includes(q))
     }
     if (fromDate) {
-      filtered = filtered.filter((s) => s.soldAt.slice(0, 10) >= fromDate)
+      filtered = filtered.filter((s) => s.createdAt.slice(0, 10) >= fromDate)
     }
     if (toDate) {
-      filtered = filtered.filter((s) => s.soldAt.slice(0, 10) <= toDate)
+      filtered = filtered.filter((s) => s.createdAt.slice(0, 10) <= toDate)
     }
 
     const totalItems = filtered.length
@@ -481,10 +679,9 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
     })
   }
 
-  // 8. GET /sales/by-receipt/{receiptNumber}
-  const byReceiptMatch = path.match(/^\/sales\/by-receipt\/([^/]+)$/)
-  if (method === 'GET' && byReceiptMatch) {
-    const receiptNumber = decodeURIComponent(byReceiptMatch[1]).trim()
+  // 10. GET /pos/sales/lookup?receiptNumber=...
+  if (method === 'GET' && path === '/pos/sales/lookup') {
+    const receiptNumber = (url.searchParams.get('receiptNumber') ?? '').trim()
     const sale = store.sales.find(
       (s) => s.receiptNumber.toLowerCase() === receiptNumber.toLowerCase(),
     )
@@ -499,8 +696,8 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
     return jsonResponse(sale)
   }
 
-  // 9. GET /sales/{id}
-  const getSaleMatch = path.match(/^\/sales\/([^/]+)$/)
+  // 11. GET /pos/sales/{id}
+  const getSaleMatch = path.match(/^\/pos\/sales\/([^/]+)$/)
   if (method === 'GET' && getSaleMatch) {
     const sale = store.sales.find((s) => s.id === getSaleMatch[1])
     if (!sale) {
@@ -509,54 +706,92 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
     return jsonResponse(sale)
   }
 
-  // 10. POST /sales/{id}/reprint
-  const reprintMatch = path.match(/^\/sales\/([^/]+)\/reprint$/)
+  // 12. GET /pos/sales/{id}/receipt
+  const receiptMatch = path.match(/^\/pos\/sales\/([^/]+)\/receipt$/)
+  if (method === 'GET' && receiptMatch) {
+    const sale = store.sales.find((s) => s.id === receiptMatch[1])
+    if (!sale) {
+      return problemResponse(404, 'NOT_FOUND', 'Sale not found.', url.pathname)
+    }
+    return jsonResponse({ ...sale.receipt, isDuplicate: false })
+  }
+
+  // 13. POST /pos/sales/{id}/reprint
+  const reprintMatch = path.match(/^\/pos\/sales\/([^/]+)\/reprint$/)
   if (method === 'POST' && reprintMatch) {
     const sale = store.sales.find((s) => s.id === reprintMatch[1])
     if (!sale) {
       return problemResponse(404, 'NOT_FOUND', 'Sale not found.', url.pathname)
     }
-    return jsonResponse({ ...sale.receipt, isDuplicate: true })
+    const nextCount = (store.reprintCounts.get(sale.id) ?? 0) + 1
+    store.reprintCounts.set(sale.id, nextCount)
+    return jsonResponse({ ...sale.receipt, isDuplicate: true, reprintCount: nextCount })
   }
 
-  // 11. POST /sales/{id}/returns
-  const returnMatch = path.match(/^\/sales\/([^/]+)\/returns$/)
-  if (method === 'POST' && returnMatch) {
-    const sale = store.sales.find((s) => s.id === returnMatch[1])
+  // 14. GET /pos/sales/{id}/returns
+  const listReturnsMatch = path.match(/^\/pos\/sales\/([^/]+)\/returns$/)
+  if (method === 'GET' && listReturnsMatch) {
+    const saleId = listReturnsMatch[1]
+    const sale = store.sales.find((s) => s.id === saleId)
     if (!sale) {
       return problemResponse(404, 'NOT_FOUND', 'Sale not found.', url.pathname)
     }
-    if (sale.status === 'RETURNED') {
-      return problemResponse(
-        409,
-        'ALREADY_RETURNED',
-        'All items on this receipt have already been returned.',
-        url.pathname,
-      )
+    return jsonResponse(store.returnsBySale.get(saleId) ?? [])
+  }
+
+  // 15. POST /pos/sales/{id}/returns
+  const returnMatch = path.match(/^\/pos\/sales\/([^/]+)\/returns$/)
+  if (method === 'POST' && returnMatch) {
+    const saleId = returnMatch[1]
+    const sale = store.sales.find((s) => s.id === saleId)
+    if (!sale) {
+      return problemResponse(404, 'NOT_FOUND', 'Sale not found.', url.pathname)
     }
 
     const req = body as unknown as CreateReturnRequest
-    if (!req.reason || !req.reason.trim()) {
-      return problemResponse(422, 'VALIDATION_FAILED', 'Return reason is required.', url.pathname)
+    const idemKey = readHeader(init?.headers, 'Idempotency-Key') ?? req.idempotencyKey
+    if (idemKey) {
+      const normalized = JSON.stringify({ ...req, idempotencyKey: undefined })
+      const existing = store.idempotency.get(`ret:${saleId}:${idemKey}`)
+      if (existing) {
+        if (existing.payloadHash !== normalized) {
+          return problemResponse(
+            409,
+            'IDEMPOTENCY_CONFLICT',
+            'Idempotency-Key was reused with a different return payload.',
+            url.pathname,
+          )
+        }
+        return jsonResponse(existing.response, existing.status)
+      }
+    }
+
+    if (req.reason === 'OTHER' && (!req.note || !req.note.trim())) {
+      return problemResponse(422, 'VALIDATION_FAILED', 'Note is required when reason is OTHER.', url.pathname)
     }
     if (!req.lines || req.lines.length === 0) {
-      return problemResponse(
-        422,
-        'VALIDATION_FAILED',
-        'Select at least one line to return.',
-        url.pathname,
-      )
+      return problemResponse(422, 'VALIDATION_FAILED', 'Select at least one line to return.', url.pathname)
+    }
+
+    const priorReturns = store.returnsBySale.get(saleId) ?? []
+    const returnedQtyByLine = new Map<string, number>()
+    for (const r of priorReturns) {
+      for (const rl of r.lines) {
+        returnedQtyByLine.set(rl.saleLineId, (returnedQtyByLine.get(rl.saleLineId) ?? 0) + rl.quantity)
+      }
     }
 
     let totalRefundCents = 0
     const returnLines: SaleReturnRecord['lines'] = []
 
-    for (const lineReq of req.lines) {
+    for (let i = 0; i < req.lines.length; i++) {
+      const lineReq = req.lines[i]
       const saleLine = sale.lines.find((l) => l.id === lineReq.saleLineId)
       if (!saleLine) {
         return problemResponse(404, 'NOT_FOUND', 'Sale line not found.', url.pathname)
       }
-      const remaining = saleLine.quantity - saleLine.returnedQuantity
+      const alreadyReturned = returnedQtyByLine.get(saleLine.id) ?? 0
+      const remaining = saleLine.quantity - alreadyReturned
       if (remaining <= 0) {
         return problemResponse(
           409,
@@ -568,7 +803,7 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       if (lineReq.quantity <= 0 || lineReq.quantity > remaining) {
         return problemResponse(
           422,
-          'VALIDATION_FAILED',
+          'RETURN_QUANTITY_EXCEEDED',
           `Return quantity for ${saleLine.sku} must be between 1 and ${remaining}.`,
           url.pathname,
         )
@@ -577,33 +812,54 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       const refundCents = perUnitCents * lineReq.quantity
       totalRefundCents += refundCents
       returnLines.push({
+        id: `ret-line-${Date.now()}-${i}`,
         saleLineId: saleLine.id,
+        variantId: saleLine.variantId,
         sku: saleLine.sku,
         quantity: lineReq.quantity,
         refundAmount: fromCents(refundCents),
+        disposition: lineReq.disposition,
       })
-    }
 
-    // Apply return
-    for (const rLine of returnLines) {
-      const saleLine = sale.lines.find((l) => l.id === rLine.saleLineId)!
-      saleLine.returnedQuantity += rLine.quantity
+      if (lineReq.disposition === 'INSPECTION') {
+        const existingInsp = store.inspections.find(
+          (item) => item.locationId === sale.locationId && item.variantId === saleLine.variantId,
+        )
+        if (existingInsp) {
+          existingInsp.inInspection += lineReq.quantity
+          existingInsp.onHand += lineReq.quantity
+        } else {
+          store.inspections.push({
+            locationId: sale.locationId,
+            variantId: saleLine.variantId,
+            sku: saleLine.sku,
+            productName: saleLine.productName,
+            color: saleLine.color,
+            size: saleLine.size,
+            inInspection: lineReq.quantity,
+            onHand: lineReq.quantity,
+            available: 0,
+          })
+        }
+      }
     }
-    const allReturned = sale.lines.every((l) => l.returnedQuantity >= l.quantity)
-    sale.status = allReturned ? 'RETURNED' : 'PARTIALLY_RETURNED'
 
     const record: SaleReturnRecord = {
       id: `ret-${store.nextReturnSeq}`,
-      refundNumber: `RFN-2026-${String(store.nextReturnSeq++).padStart(6, '0')}`,
+      returnNumber: `RTN-2026-${String(store.nextReturnSeq++).padStart(6, '0')}`,
+      saleId: sale.id,
+      locationId: sale.locationId,
       returnedAt: new Date().toISOString(),
       actorUsername: 'counter.staff',
-      reason: req.reason.trim(),
-      totalRefund: fromCents(totalRefundCents),
+      reason: req.reason,
+      note: req.note?.trim() || null,
+      refundMethod: sale.paymentMethod,
+      refundAmount: fromCents(totalRefundCents),
       lines: returnLines,
     }
-    sale.returns.push(record)
 
-    // Update active session refund total if matching
+    store.returnsBySale.set(sale.id, [record, ...priorReturns])
+
     const openSession = store.sessions.get(sale.cashSessionId)
     if (openSession && openSession.status === 'OPEN') {
       const nextRefundTotal = fromCents(toCents(openSession.refundTotal) + totalRefundCents)
@@ -618,58 +874,62 @@ async function handlePosOrSalesRequest(url: URL, init?: RequestInit): Promise<Re
       })
     }
 
+    if (idemKey) {
+      store.idempotency.set(`ret:${saleId}:${idemKey}`, {
+        payloadHash: JSON.stringify({ ...req, idempotencyKey: undefined }),
+        response: record,
+        status: 201,
+      })
+    }
+
     return jsonResponse(record, 201)
+  }
+
+  // 16. GET /inventory/inspections
+  if (method === 'GET' && path === '/inventory/inspections') {
+    const locationId = url.searchParams.get('locationId')
+    const rows = locationId
+      ? store.inspections.filter((i) => i.locationId === locationId && i.inInspection > 0)
+      : store.inspections.filter((i) => i.inInspection > 0)
+    return jsonResponse(rows)
+  }
+
+  // 17. POST /inventory/inspections/resolve
+  if (method === 'POST' && path === '/inventory/inspections/resolve') {
+    const req = body as unknown as ResolveInspectionRequest
+    const row = store.inspections.find(
+      (i) => i.locationId === req.locationId && i.variantId === req.variantId,
+    )
+    if (!row || req.quantity <= 0 || req.quantity > row.inInspection) {
+      return problemResponse(422, 'VALIDATION_FAILED', 'Invalid inspection quantity.', url.pathname)
+    }
+    row.inInspection -= req.quantity
+    if (req.outcome === 'RESTOCK') {
+      row.available += req.quantity
+    } else {
+      row.onHand = Math.max(0, row.onHand - req.quantity)
+    }
+    const resp: ResolveInspectionResponse = {
+      locationId: row.locationId,
+      variantId: row.variantId,
+      outcome: req.outcome,
+      quantity: req.quantity,
+      onHand: row.onHand,
+      inInspection: row.inInspection,
+      isFlagged: false,
+      valueAtCost: '0.00',
+    }
+    return jsonResponse(resp)
   }
 
   return problemResponse(404, 'NOT_FOUND', `No mock route for ${method} ${path}`, url.pathname)
 }
 
-function computeBelowCostWarnings(req: PriceCheckRequest) {
-  const warnings: Array<{
-    variantId: string
-    sku: string
-    netUnitPrice: string
-    costPrice: string
-  }> = []
-
-  for (const lineReq of req.lines) {
-    const variant = store.variants.find((v) => v.variantId === lineReq.variantId)
-    if (!variant) continue
-    const unitListCents = toCents(variant.listPrice)
-    const unitPromoCents = toCents(variant.promotionDiscount)
-    const afterPromoCents = Math.max(0, unitListCents - unitPromoCents)
-    let lineManualCents = 0
-    if (lineReq.manualDiscountType === 'PERCENT' && lineReq.manualDiscountValue) {
-      lineManualCents = Math.round(
-        (afterPromoCents * lineReq.quantity * Number(lineReq.manualDiscountValue)) / 100,
-      )
-    } else if (lineReq.manualDiscountType === 'FIXED' && lineReq.manualDiscountValue) {
-      lineManualCents = toCents(lineReq.manualDiscountValue)
-    }
-    const perUnitNetCents = Math.max(
-      0,
-      Math.round(
-        (afterPromoCents * lineReq.quantity - lineManualCents) / Math.max(1, lineReq.quantity),
-      ),
-    )
-    const costCents = toCents(variant.costPrice)
-    if (perUnitNetCents < costCents) {
-      warnings.push({
-        variantId: variant.variantId,
-        sku: variant.sku,
-        netUnitPrice: fromCents(perUnitNetCents),
-        costPrice: variant.costPrice,
-      })
-    }
-  }
-  return warnings
-}
-
 let installed = false
 
 /**
- * Wraps `globalThis.fetch` for `/api/v1/pos/*` and `/api/v1/sales/*` only.
- * All other API requests pass directly through to the real `fetch`.
+ * Wraps `globalThis.fetch` for POS, lookup, approval PIN, and inspection endpoints
+ * when explicitly enabled in dev (`VITE_POS_MOCKS=1`) or explicitly installed by a test.
  */
 export function installPosMocks(): () => void {
   if (installed) {
@@ -684,12 +944,13 @@ export function installPosMocks(): () => void {
     const parsed = new URL(rawUrl, 'http://localhost')
 
     if (
+      parsed.pathname === '/api/v1/catalog/lookup' ||
+      parsed.pathname === '/api/v1/auth/approval-pin' ||
       parsed.pathname.startsWith('/api/v1/pos/') ||
       parsed.pathname === '/api/v1/pos' ||
-      parsed.pathname.startsWith('/api/v1/sales/') ||
-      parsed.pathname === '/api/v1/sales'
+      parsed.pathname.startsWith('/api/v1/inventory/inspections')
     ) {
-      return handlePosOrSalesRequest(parsed, init)
+      return handleMockRequest(parsed, init)
     }
 
     return originalFetch(input, init)

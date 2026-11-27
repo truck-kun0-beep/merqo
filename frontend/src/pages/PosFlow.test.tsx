@@ -153,7 +153,7 @@ describe('POS & Sales History flows', () => {
     })
   })
 
-  it('validates single-method payments, enforces discount PIN flow, reconciles cash session, and marks reprint DUPLICATE', async () => {
+  it('validates single-method payments, exchanges approval PIN for token, reconciles server EOD summary, and marks reprint DUPLICATE', async () => {
     uninstallMocks = setupMockFetch()
 
     render(
@@ -200,15 +200,15 @@ describe('POS & Sales History flows', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Complete sale' }))
     expect(within(dialog).getByRole('alert')).toHaveTextContent(/Never enter a full card number/i)
 
-    // Switch to Cash and complete (triggers Manager PIN modal)
+    // Switch to Cash and complete (triggers Manager PIN modal -> POST /pos/approvals -> POST /pos/sales)
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cash' }))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Complete sale' }))
 
     const pinDialog = await screen.findByRole('dialog', { name: 'Manager discount approval' })
-    await userEvent.type(within(pinDialog).getByLabelText(/Manager approval PIN/), '1234')
+    await userEvent.type(within(pinDialog).getByLabelText(/Manager approval PIN/), '5839')
     await userEvent.click(within(pinDialog).getByRole('button', { name: 'Approve & complete' }))
 
-    // Receipt appears with Code 128 SVG and DUPLICATE only after reprint
+    // Receipt appears without DUPLICATE, then shows DUPLICATE after reprint
     const receiptDialog = await screen.findByRole('dialog', { name: /Receipt · MQ-/ })
     expect(within(receiptDialog).queryByText('DUPLICATE')).not.toBeInTheDocument()
     await userEvent.click(
@@ -217,17 +217,24 @@ describe('POS & Sales History flows', () => {
     expect(await within(receiptDialog).findByText('DUPLICATE')).toBeInTheDocument()
     await userEvent.click(within(receiptDialog).getByRole('button', { name: 'Close dialog' }))
 
-    // Close cash session and check reconciliation math (5000.00 + 567.00 = 5567.00)
+    // Close cash session: displays server expected figures without computing difference client-side,
+    // then shows server-computed variance after closing
     await userEvent.click(screen.getByRole('button', { name: 'Close session' }))
     const closeDialog = await screen.findByRole('dialog', { name: 'Close cash session' })
+    expect(await within(closeDialog).findByText('৳ 5,567.00', { exact: false })).toBeInTheDocument()
+    expect(within(closeDialog).queryByText('-৳ 67.00')).not.toBeInTheDocument()
+
     const countedInput = within(closeDialog).getByLabelText(/Counted cash in drawer/)
     await userEvent.clear(countedInput)
     await userEvent.type(countedInput, '5500.00')
-    expect(within(closeDialog).getByText('৳ 5,567.00', { exact: false })).toBeInTheDocument()
-    expect(within(closeDialog).getByText('-৳ 67.00')).toBeInTheDocument()
+    await userEvent.click(within(closeDialog).getByRole('button', { name: 'Close & reconcile' }))
+    const closedDialog = await screen.findByRole('dialog', {
+      name: 'Session closed · Reconciliation',
+    })
+    expect(within(closedDialog).getByText('-৳ 67.00')).toBeInTheDocument()
   })
 
-  it('enforces return quantity limits and handles ALREADY_RETURNED in Sales History', async () => {
+  it('enforces return quantity limits and loads returns in Sales History', async () => {
     uninstallMocks = setupMockFetch()
 
     render(
@@ -242,13 +249,13 @@ describe('POS & Sales History flows', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'MQ-2026-000101' }))
     const drawer = await screen.findByRole('dialog', { name: 'Sale MQ-2026-000101' })
-    await userEvent.click(within(drawer).getByRole('button', { name: 'Return items' }))
+    await userEvent.click(await within(drawer).findByRole('button', { name: 'Return items' }))
 
     // Attempt to return 5 when only 2 were sold
     const qtyInput = within(drawer).getByLabelText('Return quantity for TEE01-BLA-M')
     await userEvent.clear(qtyInput)
     await userEvent.type(qtyInput, '5')
-    await userEvent.type(within(drawer).getByLabelText(/Reason/), 'Wrong size')
+    await userEvent.selectOptions(within(drawer).getByLabelText(/Reason/), 'WRONG_SIZE')
     await userEvent.click(within(drawer).getByRole('button', { name: 'Submit return' }))
     expect(within(drawer).getByRole('alert')).toHaveTextContent(/cannot exceed 2/)
 

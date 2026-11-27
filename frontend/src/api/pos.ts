@@ -1,32 +1,27 @@
-import { apiRequest } from './client'
+import { apiRequest, toQueryString } from './client'
 import type {
-  BelowCostWarning,
+  ApprovalTokenResponse,
   CashSessionSummary,
+  InspectionItem,
+  InspectionOutcome,
+  LookupResult,
   PageResponse,
   PaymentMethod,
   PosDiscountType,
-  PosLookupResponse,
   ReceiptData,
+  ResolveInspectionResponse,
+  ReturnDisposition,
+  ReturnReason,
   SaleDetail,
   SaleReturnRecord,
   SaleSummary,
 } from './models'
 
 /**
- * Point of Sale, Approvals, Inspections, and Sales History API client.
+ * Live Point of Sale, Approvals, Returns, and Inspection API wrappers.
  *
- * Uses the shared `apiRequest` client (same-origin `/api/v1`, CSRF header,
- * RFC 7807 `ApiError`).
+ * Always targets the real Phase 3 backend paths.
  */
-
-/**
- * In Vitest or when `VITE_POS_MOCKS=1` is enabled, `src/dev/posMocks.ts` intercepts
- * the legacy Phase 2 mock paths (`/pos/lookup`, `/pos/sessions/open`, `/sales/*`).
- * Against the live Phase 3 backend, requests use the real `/catalog/lookup`,
- * `/pos/sessions`, and `/pos/sales/*` routes.
- */
-const USE_MOCK_PATHS =
-  import.meta.env.MODE === 'test' || import.meta.env.VITE_POS_MOCKS === '1'
 
 export interface OpenCashSessionRequest {
   locationId: string
@@ -35,10 +30,10 @@ export interface OpenCashSessionRequest {
 
 export interface CloseCashSessionRequest {
   countedCash: string
-  countedBkash?: string | null
-  countedNagad?: string | null
-  countedCard?: string | null
-  note?: string | null
+  countedBkash?: string
+  countedNagad?: string
+  countedCard?: string
+  note?: string
 }
 
 export interface SetApprovalPinRequest {
@@ -46,65 +41,34 @@ export interface SetApprovalPinRequest {
   pin: string
 }
 
-export interface ApprovalTokenRequest {
+export interface CreateApprovalRequest {
   locationId: string
   pin: string
-  maxDiscountPercent: string
-}
-
-export interface ApprovalTokenResponse {
-  approvalToken: string
-  expiresAt: string
   maxDiscountPercent: string
 }
 
 export interface CreateSaleLineRequest {
   variantId: string
   quantity: number
-  manualDiscountType?: PosDiscountType | null
-  manualDiscountValue?: string | null
+  manualDiscountType?: PosDiscountType
+  manualDiscountValue?: string
 }
 
 export interface CreateSalePaymentRequest {
   method: PaymentMethod
-  tendered?: string | null
-  amountGiven?: string | null
-  reference?: string | null
-  trxId?: string | null
-  cardReference?: string | null
+  tendered?: string
+  reference?: string
 }
 
 export interface CreateSaleRequest {
   locationId: string
-  cashSessionId?: string
   lines: CreateSaleLineRequest[]
-  billDiscountType?: PosDiscountType | null
-  billDiscountValue?: string | null
-  approvalToken?: string | null
+  billDiscountType?: PosDiscountType
+  billDiscountValue?: string
+  approvalToken?: string
   payment: CreateSalePaymentRequest
-  managerPin?: string | null
-  idempotencyKey?: string | null
-  note?: string | null
-}
-
-export interface PriceCheckRequest {
-  locationId: string
-  lines: CreateSaleLineRequest[]
-  billDiscountType?: PosDiscountType | null
-  billDiscountValue?: string | null
-}
-
-export type ReturnDisposition = 'RESTOCK' | 'INSPECTION'
-
-export interface CreateReturnRequest {
-  reason: string
-  note?: string | null
-  idempotencyKey?: string | null
-  lines: Array<{
-    saleLineId: string
-    quantity: number
-    disposition?: ReturnDisposition
-  }>
+  idempotencyKey?: string
+  note?: string
 }
 
 export interface SalesFilters {
@@ -116,68 +80,67 @@ export interface SalesFilters {
   size?: number
 }
 
-export interface InspectionItem {
-  locationId: string
-  variantId: string
-  sku: string | null
-  productName: string | null
-  color: string | null
-  size: string | null
-  inInspection: number
-  onHand: number
-  available: number
+export interface CreateReturnLineRequest {
+  saleLineId: string
+  quantity: number
+  disposition: ReturnDisposition
 }
 
-export type InspectionOutcome = 'RESTOCK' | 'WRITE_OFF'
+export interface CreateReturnRequest {
+  reason: ReturnReason
+  note?: string
+  lines: CreateReturnLineRequest[]
+  idempotencyKey?: string
+}
 
 export interface ResolveInspectionRequest {
   locationId: string
   variantId: string
   quantity: number
   outcome: InspectionOutcome
-  note?: string | null
+  note?: string
 }
 
-export interface ResolveInspectionResponse {
-  locationId: string
-  variantId: string
-  outcome: InspectionOutcome
-  quantity: number
-  onHand: number
-  inInspection: number
-  isFlagged: boolean
-  valueAtCost?: string
-}
-
-export function posLookupBarcode(barcode: string, locationId: string): Promise<PosLookupResponse> {
-  if (USE_MOCK_PATHS) {
-    return apiRequest<PosLookupResponse>(`/pos/lookup${toQueryString({ barcode, locationId })}`)
-  }
-  return apiRequest<PosLookupResponse>(
+/**
+ * Looks up a sellable POS item by barcode at a branch location.
+ */
+export function posLookupBarcode(barcode: string, locationId: string): Promise<LookupResult> {
+  return apiRequest<LookupResult>(
     `/catalog/lookup${toQueryString({ barcode, scope: 'POS', locationId })}`,
   )
 }
 
+/**
+ * Returns the open cash session for `locationId`, or `{ session: null }`.
+ */
 export function fetchCurrentCashSession(
-  locationId?: string,
+  locationId: string,
 ): Promise<{ session: CashSessionSummary | null }> {
   return apiRequest<{ session: CashSessionSummary | null }>(
     `/pos/sessions/current${toQueryString({ locationId })}`,
   )
 }
 
+/**
+ * Opens a cash session at the given branch with an opening float.
+ */
 export function openCashSession(request: OpenCashSessionRequest): Promise<CashSessionSummary> {
-  const path = USE_MOCK_PATHS ? '/pos/sessions/open' : '/pos/sessions'
-  return apiRequest<CashSessionSummary>(path, {
+  return apiRequest<CashSessionSummary>('/pos/sessions', {
     method: 'POST',
     body: JSON.stringify(request),
   })
 }
 
+/**
+ * Returns server-computed cash and tender summaries for a cash session.
+ */
 export function fetchCashSessionSummary(sessionId: string): Promise<CashSessionSummary> {
   return apiRequest<CashSessionSummary>(`/pos/sessions/${sessionId}/summary`)
 }
 
+/**
+ * Closes a cash session with counted drawer & tender figures.
+ */
 export function closeCashSession(
   sessionId: string,
   request: CloseCashSessionRequest,
@@ -188,6 +151,9 @@ export function closeCashSession(
   })
 }
 
+/**
+ * Sets or updates the caller's own discount approval PIN (requires `POS_DISCOUNT_APPROVE` or `OWNER`).
+ */
 export function setApprovalPin(request: SetApprovalPinRequest): Promise<void> {
   return apiRequest<void>('/auth/approval-pin', {
     method: 'PUT',
@@ -195,8 +161,12 @@ export function setApprovalPin(request: SetApprovalPinRequest): Promise<void> {
   })
 }
 
+/**
+ * Exchanges a manager approval PIN for a single-use short-lived approval token.
+ * Response never contains the approver's name or identity.
+ */
 export function requestDiscountApproval(
-  request: ApprovalTokenRequest,
+  request: CreateApprovalRequest,
 ): Promise<ApprovalTokenResponse> {
   return apiRequest<ApprovalTokenResponse>('/pos/approvals', {
     method: 'POST',
@@ -204,80 +174,89 @@ export function requestDiscountApproval(
   })
 }
 
-export function checkSalePrices(
-  request: PriceCheckRequest,
-): Promise<{ belowCostWarnings: BelowCostWarning[] }> {
-  return apiRequest<{ belowCostWarnings: BelowCostWarning[] }>('/pos/price-check', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
-}
-
+/**
+ * Completes a POS sale under the active branch cash session.
+ */
 export function createSale(
   request: CreateSaleRequest,
-  idempotencyKey?: string,
+  idempotencyKey: string,
 ): Promise<SaleDetail> {
-  const path = USE_MOCK_PATHS ? '/sales' : '/pos/sales'
-  const key = idempotencyKey ?? request.idempotencyKey ?? undefined
-  return apiRequest<SaleDetail>(path, {
+  return apiRequest<SaleDetail>('/pos/sales', {
     method: 'POST',
-    headers: key ? { 'Idempotency-Key': key } : undefined,
-    body: JSON.stringify(request),
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ ...request, idempotencyKey }),
   })
 }
 
+/**
+ * Lists POS sales scoped to the caller's accessible branches.
+ */
 export function fetchSales(filters: SalesFilters = {}): Promise<PageResponse<SaleSummary>> {
-  const basePath = USE_MOCK_PATHS ? '/sales' : '/pos/sales'
-  return apiRequest<PageResponse<SaleSummary>>(`${basePath}${toQueryString(filters)}`)
+  return apiRequest<PageResponse<SaleSummary>>(`/pos/sales${toQueryString(filters)}`)
 }
 
+/**
+ * Reads the full detail of a single POS sale.
+ */
 export function fetchSale(id: string): Promise<SaleDetail> {
-  const basePath = USE_MOCK_PATHS ? '/sales' : '/pos/sales'
-  return apiRequest<SaleDetail>(`${basePath}/${id}`)
+  return apiRequest<SaleDetail>(`/pos/sales/${id}`)
 }
 
+/**
+ * Looks up a POS sale by its exact receipt number.
+ */
 export function fetchSaleByReceipt(receiptNumber: string): Promise<SaleDetail> {
-  if (USE_MOCK_PATHS) {
-    return apiRequest<SaleDetail>(
-      `/sales/by-receipt/${encodeURIComponent(receiptNumber.trim())}`,
-    )
-  }
-  return apiRequest<SaleDetail>(
-    `/pos/sales/lookup${toQueryString({ receiptNumber: receiptNumber.trim() })}`,
-  )
+  return apiRequest<SaleDetail>(`/pos/sales/lookup${toQueryString({ receiptNumber })}`)
 }
 
-export function fetchSaleReceipt(id: string): Promise<ReceiptData> {
-  return apiRequest<ReceiptData>(`/pos/sales/${id}/receipt`)
+/**
+ * Fetches the receipt payload (`isDuplicate: false`) for a sale.
+ */
+export function fetchSaleReceipt(saleId: string): Promise<ReceiptData> {
+  return apiRequest<ReceiptData>(`/pos/sales/${saleId}/receipt`)
 }
 
-export function reprintSaleReceipt(id: string): Promise<ReceiptData> {
-  const basePath = USE_MOCK_PATHS ? '/sales' : '/pos/sales'
-  return apiRequest<ReceiptData>(`${basePath}/${id}/reprint`, { method: 'POST' })
+/**
+ * Marks a receipt reprint on the server and returns a `DUPLICATE` receipt payload.
+ */
+export function reprintSaleReceipt(saleId: string): Promise<ReceiptData> {
+  return apiRequest<ReceiptData>(`/pos/sales/${saleId}/reprint`, {
+    method: 'POST',
+  })
 }
 
+/**
+ * Processes a full or partial return with per-line stock/inspection disposition.
+ */
 export function createSaleReturn(
   saleId: string,
   request: CreateReturnRequest,
-  idempotencyKey?: string,
+  idempotencyKey: string,
 ): Promise<SaleReturnRecord> {
-  const basePath = USE_MOCK_PATHS ? '/sales' : '/pos/sales'
-  const key = idempotencyKey ?? request.idempotencyKey ?? undefined
-  return apiRequest<SaleReturnRecord>(`${basePath}/${saleId}/returns`, {
+  return apiRequest<SaleReturnRecord>(`/pos/sales/${saleId}/returns`, {
     method: 'POST',
-    headers: key ? { 'Idempotency-Key': key } : undefined,
-    body: JSON.stringify(request),
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ ...request, idempotencyKey }),
   })
 }
 
+/**
+ * Lists all returns recorded against a sale.
+ */
 export function listSaleReturns(saleId: string): Promise<SaleReturnRecord[]> {
   return apiRequest<SaleReturnRecord[]>(`/pos/sales/${saleId}/returns`)
 }
 
-export function listInspections(locationId?: string): Promise<InspectionItem[]> {
+/**
+ * Lists inventory quantities currently held in inspection.
+ */
+export function fetchInspections(locationId?: string): Promise<InspectionItem[]> {
   return apiRequest<InspectionItem[]>(`/inventory/inspections${toQueryString({ locationId })}`)
 }
 
+/**
+ * Resolves a quantity in inspection as `RESTOCK` (back to sellable stock) or `WRITE_OFF`.
+ */
 export function resolveInspection(
   request: ResolveInspectionRequest,
 ): Promise<ResolveInspectionResponse> {
@@ -285,15 +264,4 @@ export function resolveInspection(
     method: 'POST',
     body: JSON.stringify(request),
   })
-}
-
-function toQueryString(filters: object): string {
-  const parts: string[] = []
-  for (const [key, value] of Object.entries(filters)) {
-    if (value === undefined || value === '') {
-      continue
-    }
-    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
-  }
-  return parts.length ? `?${parts.join('&')}` : ''
 }

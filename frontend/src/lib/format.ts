@@ -1,4 +1,5 @@
 import { ApiError, BackendUnreachableError } from '../api/types'
+import { resolveApiErrorMessage } from './posErrors'
 
 /**
  * Formats an amount in BDT with thousands separators, e.g. `৳ 12,500.00`.
@@ -87,7 +88,7 @@ export interface FormattedError {
 export function readErrorDetails(caught: unknown): FormattedError {
   if (caught instanceof ApiError) {
     return {
-      message: caught.message,
+      message: resolveApiErrorMessage(caught.errorCode, caught.message),
       errorCode: caught.errorCode,
       correlationId: caught.correlationId,
       fieldErrors: caught.fieldErrors,

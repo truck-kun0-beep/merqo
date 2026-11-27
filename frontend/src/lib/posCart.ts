@@ -164,13 +164,13 @@ export function isRejectedFullCardNumber(raw: string): boolean {
 export function validatePayment(
   method: PaymentMethod,
   totalMinor: number,
-  input: { amountGiven: string; trxId: string; cardReference: string },
+  input: { tendered: string; reference: string },
 ): PaymentValidationResult {
   if (method === 'CASH') {
-    if (input.amountGiven.trim() === '') {
+    if (input.tendered.trim() === '') {
       return { valid: false, error: 'Enter the cash amount received.', changeMinor: 0 }
     }
-    const givenMinor = parseMinorUnits(input.amountGiven)
+    const givenMinor = parseMinorUnits(input.tendered)
     if (givenMinor < totalMinor) {
       return {
         valid: false,
@@ -182,7 +182,7 @@ export function validatePayment(
   }
 
   if (method === 'BKASH' || method === 'NAGAD') {
-    const trimmed = input.trxId.trim()
+    const trimmed = input.reference.trim()
     if (trimmed.length < 4) {
       return {
         valid: false,
@@ -194,7 +194,7 @@ export function validatePayment(
   }
 
   // CARD
-  const ref = input.cardReference.trim()
+  const ref = input.reference.trim()
   if (isRejectedFullCardNumber(ref)) {
     return {
       valid: false,

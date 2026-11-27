@@ -51,40 +51,35 @@ describe('Integer minor-unit money & cart math', () => {
 
   it('validates single-method payments and rejects full card numbers', () => {
     const cashFail = validatePayment('CASH', 50000, {
-      amountGiven: '400.00',
-      trxId: '',
-      cardReference: '',
+      tendered: '400.00',
+      reference: '',
     })
     expect(cashFail.valid).toBe(false)
 
     const cashOk = validatePayment('CASH', 50000, {
-      amountGiven: '600.00',
-      trxId: '',
-      cardReference: '',
+      tendered: '600.00',
+      reference: '',
     })
     expect(cashOk.valid).toBe(true)
     expect(cashOk.changeMinor).toBe(10000)
 
     const bkashFail = validatePayment('BKASH', 50000, {
-      amountGiven: '',
-      trxId: '12',
-      cardReference: '',
+      tendered: '',
+      reference: '12',
     })
     expect(bkashFail.valid).toBe(false)
     expect(bkashFail.error).toMatch(/TrxID is required/i)
 
     const fullCardReject = validatePayment('CARD', 50000, {
-      amountGiven: '',
-      trxId: '',
-      cardReference: '4111111111111111',
+      tendered: '',
+      reference: '4111111111111111',
     })
     expect(fullCardReject.valid).toBe(false)
     expect(fullCardReject.error).toMatch(/Never enter a full card number/i)
 
     const last4Ok = validatePayment('CARD', 50000, {
-      amountGiven: '',
-      trxId: '',
-      cardReference: '4242',
+      tendered: '',
+      reference: '4242',
     })
     expect(last4Ok.valid).toBe(true)
   })

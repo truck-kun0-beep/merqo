@@ -2,23 +2,29 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchLocations } from '../api/business'
 import {
-  checkSalePrices,
   closeCashSession,
   createSale,
   createSaleReturn,
+  fetchCashSessionSummary,
   fetchCurrentCashSession,
   fetchSaleByReceipt,
+  fetchSaleReceipt,
+  listSaleReturns,
   openCashSession,
   posLookupBarcode,
   reprintSaleReceipt,
+  requestDiscountApproval,
+  type CreateSaleRequest,
 } from '../api/pos'
 import type {
   BelowCostWarning,
   CashSessionSummary,
+  LookupResult,
   PaymentMethod,
   PosDiscountType,
-  PosLookupResponse,
   ReceiptData,
+  ReturnDisposition,
+  ReturnReason,
   SaleDetail,
   SaleReturnRecord,
 } from '../api/models'
@@ -44,6 +50,20 @@ import {
   StatusPill,
   useToast,
 } from '../components/ui'
+
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+const RETURN_REASONS: Array<{ value: ReturnReason; label: string }> = [
+  { value: 'CHANGED_MIND', label: 'Changed mind' },
+  { value: 'WRONG_SIZE', label: 'Wrong size' },
+  { value: 'DEFECTIVE', label: 'Defective' },
+  { value: 'OTHER', label: 'Other' },
+]
 
 /**
  * Keyboard-first Point of Sale screen: barcode scanning, integer-money cart,
@@ -74,33 +94,33 @@ export default function PosPage() {
   const [payOpen, setPayOpen] = useState(false)
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [openSessionModal, setOpenSessionModal] = useState(false)
-  const [closeSessionModal, setCloseSessionModal] = useState(false)
+  const [closeSessionTarget, setCloseSessionTarget] = useState<CashSessionSummary | null>(null)
   const [receiptModal, setReceiptModal] = useState<{
     saleId?: string
     receipt: ReceiptData
   } | null>(null)
   const [lastReceipt, setLastReceipt] = useState<{
     saleId: string
-    receipt: ReceiptData
+    receiptNumber: string
   } | null>(null)
   const [returnModalOpen, setReturnModalOpen] = useState(false)
   const [saleError, setSaleError] = useState<unknown>(null)
 
   const [pendingPayment, setPendingPayment] = useState<{
     method: PaymentMethod
-    amountGiven: string
-    trxId: string
-    cardReference: string
+    tendered: string
+    reference: string
   } | null>(null)
 
   const scanContainerRef = useRef<HTMLDivElement>(null)
+  const lastSaleAttemptRef = useRef<{ signature: string; key: string } | null>(null)
 
   const anyDialogOpen =
     clearConfirmOpen ||
     payOpen ||
     pinModalOpen ||
     openSessionModal ||
-    closeSessionModal ||
+    Boolean(closeSessionTarget) ||
     Boolean(receiptModal) ||
     returnModalOpen
 
@@ -123,97 +143,81 @@ export default function PosPage() {
     [cart, billDiscountType, billDiscountValue],
   )
 
-  const priceCheckMutation = useMutation({
-    mutationFn: checkSalePrices,
-    onSuccess: (res) => setBelowCostWarnings(res.belowCostWarnings ?? []),
-  })
+  useEffect(() => {
+    lastSaleAttemptRef.current = null
+  }, [cart, billDiscountType, billDiscountValue, locationId])
 
-  function triggerServerPriceCheck(
-    nextCart: PosCartLine[],
-    nextBillType: PosDiscountType | null,
-    nextBillVal: string,
-  ) {
-    if (!locationId || nextCart.length === 0) {
-      setBelowCostWarnings([])
-      return
-    }
-    priceCheckMutation.mutate({
-      locationId,
-      lines: nextCart.map((l) => ({
-        variantId: l.variantId,
-        quantity: l.quantity,
-        manualDiscountType: l.manualDiscountType,
-        manualDiscountValue: l.manualDiscountValue || null,
-      })),
-      billDiscountType: nextBillType,
-      billDiscountValue: nextBillVal || null,
-    })
-  }
-
-  function addScannedItem(item: PosLookupResponse) {
+  function addScannedItem(item: LookupResult) {
     setSaleError(null)
+    const variantLabel =
+      [item.variant.color, item.variant.size, item.variant.otherAttribute]
+        .filter(Boolean)
+        .join(' / ') || 'Default'
+
     setCart((prev) => {
-      const existingIndex = prev.findIndex((line) => line.variantId === item.variantId)
-      let next: PosCartLine[]
+      const existingIndex = prev.findIndex((line) => line.variantId === item.variant.id)
       if (existingIndex >= 0) {
-        next = prev.map((line, idx) =>
+        return prev.map((line, idx) =>
           idx === existingIndex ? { ...line, quantity: line.quantity + 1 } : line,
         )
-      } else {
-        next = [
+      }
+      return [
+        ...prev,
+        {
+          variantId: item.variant.id,
+          productName: item.variant.productName,
+          sku: item.variant.sku,
+          variantLabel,
+          unitPrice: item.listPrice,
+          promotionName: item.promotion?.name ?? null,
+          promotionDiscount: item.promotionDiscount,
+          taxRatePercent: item.taxRatePercent,
+          taxInclusive: item.taxInclusive,
+          availableStock: item.stock?.available ?? 0,
+          quantity: 1,
+          manualDiscountType: null,
+          manualDiscountValue: '',
+        },
+      ]
+    })
+
+    if (item.belowCost && item.cost) {
+      setBelowCostWarnings((prev) => {
+        if (prev.some((w) => w.variantId === item.variant.id)) {
+          return prev
+        }
+        return [
           ...prev,
           {
-            variantId: item.variantId,
-            productName: item.productName,
-            sku: item.sku,
-            variantLabel: item.variantLabel,
-            unitPrice: item.listPrice,
-            promotionName: item.promotionName,
-            promotionDiscount: item.promotionDiscount,
-            taxRatePercent: item.taxRatePercent,
-            taxInclusive: item.taxInclusive,
-            availableStock: item.availableStock,
-            quantity: 1,
-            manualDiscountType: null,
-            manualDiscountValue: '',
+            variantId: item.variant.id,
+            sku: item.variant.sku,
+            netUnitPrice: item.netUnitPrice,
+            costPrice: item.cost ?? null,
           },
         ]
-      }
-      if (item.belowCost) {
-        triggerServerPriceCheck(next, billDiscountType, billDiscountValue)
-      }
-      return next
-    })
+      })
+    }
   }
 
   function updateLineQty(variantId: string, nextQty: number) {
     if (Number.isNaN(nextQty) || nextQty < 1) return
     const qty = Math.trunc(nextQty)
-    setCart((prev) => {
-      const next = prev.map((l) => (l.variantId === variantId ? { ...l, quantity: qty } : l))
-      triggerServerPriceCheck(next, billDiscountType, billDiscountValue)
-      return next
-    })
+    setCart((prev) => prev.map((l) => (l.variantId === variantId ? { ...l, quantity: qty } : l)))
   }
 
   function updateLineDiscount(variantId: string, type: PosDiscountType | null, value: string) {
-    setCart((prev) => {
-      const next = prev.map((l) =>
+    setCart((prev) =>
+      prev.map((l) =>
         l.variantId === variantId
           ? { ...l, manualDiscountType: type, manualDiscountValue: value }
           : l,
-      )
-      triggerServerPriceCheck(next, billDiscountType, billDiscountValue)
-      return next
-    })
+      ),
+    )
   }
 
   function removeLine(variantId: string) {
-    setCart((prev) => {
-      const next = prev.filter((l) => l.variantId !== variantId)
-      triggerServerPriceCheck(next, billDiscountType, billDiscountValue)
-      return next
-    })
+    setCart((prev) => prev.filter((l) => l.variantId !== variantId))
+    setBelowCostWarnings((prev) => prev.filter((w) => w.variantId !== variantId))
   }
 
   function clearCart() {
@@ -229,11 +233,10 @@ export default function PosPage() {
     mutationFn: async (input: {
       payment: {
         method: PaymentMethod
-        amountGiven: string
-        trxId: string
-        cardReference: string
+        tendered: string
+        reference: string
       }
-      managerPin?: string
+      approvalToken?: string
     }) => {
       if (!cashSession) {
         throw new ApiError({
@@ -241,7 +244,7 @@ export default function PosPage() {
           title: 'Cash session required',
           status: 409,
           detail: 'Open a cash session before completing a sale.',
-          instance: '/api/v1/sales',
+          instance: '/api/v1/pos/sales',
           errorCode: 'POS_SESSION_REQUIRED',
           correlationId: 'client-check',
           timestamp: new Date().toISOString(),
@@ -249,31 +252,34 @@ export default function PosPage() {
           errors: [],
         })
       }
-      return createSale({
+      const payload: CreateSaleRequest = {
         locationId,
-        cashSessionId: cashSession.id,
         lines: cart.map((l) => ({
           variantId: l.variantId,
           quantity: l.quantity,
-          manualDiscountType: l.manualDiscountType,
-          manualDiscountValue: l.manualDiscountValue || null,
+          manualDiscountType: l.manualDiscountType ?? undefined,
+          manualDiscountValue: l.manualDiscountValue.trim() || undefined,
         })),
-        billDiscountType,
-        billDiscountValue: billDiscountValue || null,
+        billDiscountType: billDiscountType ?? undefined,
+        billDiscountValue: billDiscountValue.trim() || undefined,
+        approvalToken: input.approvalToken,
         payment: {
           method: input.payment.method,
-          amountGiven: input.payment.method === 'CASH' ? input.payment.amountGiven : null,
-          trxId:
-            input.payment.method === 'BKASH' || input.payment.method === 'NAGAD'
-              ? input.payment.trxId.trim()
-              : null,
-          cardReference:
-            input.payment.method === 'CARD' ? input.payment.cardReference.trim() : null,
+          ...(input.payment.method === 'CASH'
+            ? { tendered: input.payment.tendered }
+            : { reference: input.payment.reference.trim() }),
         },
-        managerPin: input.managerPin ?? null,
-      })
+      }
+      const signature = JSON.stringify(payload)
+      let idemKey = lastSaleAttemptRef.current?.key
+      if (!idemKey || lastSaleAttemptRef.current?.signature !== signature) {
+        idemKey = newIdempotencyKey()
+        lastSaleAttemptRef.current = { signature, key: idemKey }
+      }
+      return createSale(payload, idemKey)
     },
     onSuccess: (completed: SaleDetail) => {
+      lastSaleAttemptRef.current = null
       setPayOpen(false)
       setPinModalOpen(false)
       setPendingPayment(null)
@@ -282,18 +288,46 @@ export default function PosPage() {
       setBillDiscountType(null)
       setBillDiscountValue('')
       setBelowCostWarnings(completed.belowCostWarnings ?? [])
-      setLastReceipt({ saleId: completed.id, receipt: completed.receipt })
+      setLastReceipt({ saleId: completed.id, receiptNumber: completed.receiptNumber })
       setReceiptModal({ saleId: completed.id, receipt: completed.receipt })
       queryClient.invalidateQueries({ queryKey: ['pos', 'session', locationId] })
       toast({ title: `Sale ${completed.receiptNumber} completed`, tone: 'success' })
     },
     onError: (caught) => {
       if (caught instanceof ApiError && caught.errorCode === 'DISCOUNT_LIMIT_EXCEEDED') {
+        lastSaleAttemptRef.current = null
         setPayOpen(false)
         setPinModalOpen(true)
       } else {
         setSaleError(caught)
       }
+    },
+  })
+
+  const approvalMutation = useMutation({
+    mutationFn: async (input: {
+      payment: { method: PaymentMethod; tendered: string; reference: string }
+      pin: string
+    }) => {
+      const requestedPercent = String(
+        Math.min(100, Math.max(1, Math.ceil(totals.effectiveManualDiscountPercent || 100))),
+      )
+      const tokenResponse = await requestDiscountApproval({
+        locationId,
+        pin: input.pin,
+        maxDiscountPercent: requestedPercent,
+      })
+      return saleMutation.mutateAsync({
+        payment: input.payment,
+        approvalToken: tokenResponse.approvalToken,
+      })
+    },
+  })
+
+  const lastReceiptMutation = useMutation({
+    mutationFn: (saleId: string) => fetchSaleReceipt(saleId),
+    onSuccess: (receipt, saleId) => {
+      setReceiptModal({ saleId, receipt })
     },
   })
 
@@ -329,14 +363,14 @@ export default function PosPage() {
 
   function handleAttemptPayment(payment: {
     method: PaymentMethod
-    amountGiven: string
-    trxId: string
-    cardReference: string
+    tendered: string
+    reference: string
   }) {
     setSaleError(null)
     if (totals.effectiveManualDiscountPercent > maxDiscountPercent && !canApproveDiscount) {
       setPendingPayment(payment)
       setPayOpen(false)
+      approvalMutation.reset()
       setPinModalOpen(true)
       return
     }
@@ -370,8 +404,13 @@ export default function PosPage() {
             ) : null}
 
             {lastReceipt ? (
-              <Button variant="outline" size="sm" onClick={() => setReceiptModal(lastReceipt)}>
-                Last receipt ({lastReceipt.receipt.receiptNumber})
+              <Button
+                variant="outline"
+                size="sm"
+                isLoading={lastReceiptMutation.isPending}
+                onClick={() => lastReceiptMutation.mutate(lastReceipt.saleId)}
+              >
+                Last receipt ({lastReceipt.receiptNumber})
               </Button>
             ) : null}
 
@@ -416,7 +455,7 @@ export default function PosPage() {
                 Open cash session
               </Button>
             ) : (
-              <Button variant="outline" size="sm" onClick={() => setCloseSessionModal(true)}>
+              <Button variant="outline" size="sm" onClick={() => setCloseSessionTarget(cashSession)}>
                 Close session
               </Button>
             )}
@@ -462,7 +501,7 @@ export default function PosPage() {
             ref={scanContainerRef}
             className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs"
           >
-            <ScanInput<PosLookupResponse>
+            <ScanInput<LookupResult>
               label="Scan or enter barcode"
               placeholder="Scan item barcode and press Enter..."
               submitLabel="Add"
@@ -683,7 +722,6 @@ export default function PosPage() {
                     onChange={(e) => {
                       const nextType = (e.target.value || null) as PosDiscountType | null
                       setBillDiscountType(nextType)
-                      triggerServerPriceCheck(cart, nextType, billDiscountValue)
                     }}
                     className="w-24"
                   >
@@ -698,10 +736,7 @@ export default function PosPage() {
                       step="0.01"
                       aria-label="Bill discount value"
                       value={billDiscountValue}
-                      onChange={(e) => {
-                        setBillDiscountValue(e.target.value)
-                        triggerServerPriceCheck(cart, billDiscountType, e.target.value)
-                      }}
+                      onChange={(e) => setBillDiscountValue(e.target.value)}
                     />
                   ) : null}
                 </div>
@@ -759,7 +794,7 @@ export default function PosPage() {
                       title: 'Cash session required',
                       status: 409,
                       detail: 'Open a cash session before paying.',
-                      instance: '/api/v1/sales',
+                      instance: '/api/v1/pos/sales',
                       errorCode: 'POS_SESSION_REQUIRED',
                       correlationId: 'client-check',
                       timestamp: new Date().toISOString(),
@@ -806,13 +841,14 @@ export default function PosPage() {
         <ManagerPinModal
           cashierLimit={maxDiscountPercent}
           appliedPercent={totals.effectiveManualDiscountPercent}
-          isSubmitting={saleMutation.isPending}
-          error={saleMutation.error}
+          isSubmitting={approvalMutation.isPending || saleMutation.isPending}
+          error={approvalMutation.error ?? saleMutation.error}
           onClose={() => {
             setPinModalOpen(false)
             setPendingPayment(null)
+            approvalMutation.reset()
           }}
-          onApprove={(pin) => saleMutation.mutate({ payment: pendingPayment, managerPin: pin })}
+          onApprove={(pin) => approvalMutation.mutate({ payment: pendingPayment, pin })}
         />
       ) : null}
 
@@ -829,10 +865,10 @@ export default function PosPage() {
       ) : null}
 
       {/* Close Cash Session Reconciliation Modal */}
-      {closeSessionModal && cashSession ? (
+      {closeSessionTarget ? (
         <CloseCashSessionModal
-          session={cashSession}
-          onClose={() => setCloseSessionModal(false)}
+          session={closeSessionTarget}
+          onClose={() => setCloseSessionTarget(null)}
           onClosed={() =>
             queryClient.invalidateQueries({ queryKey: ['pos', 'session', locationId] })
           }
@@ -899,32 +935,29 @@ function PaymentModal({
   onClose: () => void
   onSubmit: (payment: {
     method: PaymentMethod
-    amountGiven: string
-    trxId: string
-    cardReference: string
+    tendered: string
+    reference: string
   }) => void
 }) {
   const [method, setMethod] = useState<PaymentMethod>('CASH')
-  const [amountGiven, setAmountGiven] = useState(formatMinorUnits(totalMinor))
-  const [trxId, setTrxId] = useState('')
-  const [cardReference, setCardReference] = useState('')
+  const [tendered, setTendered] = useState(formatMinorUnits(totalMinor))
+  const [reference, setReference] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const liveChangeMinor = method === 'CASH' ? parseMinorUnits(amountGiven) - totalMinor : 0
+  const liveChangeMinor = method === 'CASH' ? parseMinorUnits(tendered) - totalMinor : 0
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     const result = validatePayment(method, totalMinor, {
-      amountGiven,
-      trxId,
-      cardReference,
+      tendered,
+      reference,
     })
     if (!result.valid) {
       setValidationError(result.error ?? 'Invalid payment details.')
       return
     }
     setValidationError(null)
-    onSubmit({ method, amountGiven, trxId, cardReference })
+    onSubmit({ method, tendered, reference })
   }
 
   return (
@@ -965,8 +998,8 @@ function PaymentModal({
                 type="number"
                 step="0.01"
                 min="0"
-                value={amountGiven}
-                onChange={(e) => setAmountGiven(e.target.value)}
+                value={tendered}
+                onChange={(e) => setTendered(e.target.value)}
               />
             </FormField>
             <p className="text-sm text-slate-700">
@@ -982,9 +1015,9 @@ function PaymentModal({
           <FormField label={`${method === 'BKASH' ? 'bKash' : 'Nagad'} TrxID`} required>
             <Input
               autoFocus
-              value={trxId}
+              value={reference}
               placeholder="e.g. BKX901234"
-              onChange={(e) => setTrxId(e.target.value)}
+              onChange={(e) => setReference(e.target.value)}
             />
           </FormField>
         ) : null}
@@ -997,9 +1030,9 @@ function PaymentModal({
           >
             <Input
               autoFocus
-              value={cardReference}
+              value={reference}
               placeholder="e.g. 4242 or AUTH-991"
-              onChange={(e) => setCardReference(e.target.value)}
+              onChange={(e) => setReference(e.target.value)}
             />
           </FormField>
         ) : null}
@@ -1068,7 +1101,7 @@ function ManagerPinModal({
             inputMode="numeric"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
-            placeholder="Enter PIN (mock: 1234)"
+            placeholder="Enter approval PIN"
           />
         </FormField>
 
@@ -1155,19 +1188,34 @@ function CloseCashSessionModal({
   onClosed: () => void
 }) {
   const { toast } = useToast()
-  const [countedCash, setCountedCash] = useState(session.expectedCash)
+  const [countedCash, setCountedCash] = useState<string | null>(null)
+  const [countedBkash, setCountedBkash] = useState('')
+  const [countedNagad, setCountedNagad] = useState('')
+  const [countedCard, setCountedCard] = useState('')
   const [note, setNote] = useState('')
   const [closedReport, setClosedReport] = useState<CashSessionSummary | null>(null)
 
-  const expectedMinor = parseMinorUnits(session.expectedCash)
-  const countedMinor = parseMinorUnits(countedCash)
-  const diffMinor = countedMinor - expectedMinor
+  const summaryQuery = useQuery({
+    queryKey: ['pos', 'session-summary', session.id],
+    queryFn: () => fetchCashSessionSummary(session.id),
+  })
+
+  const effectiveCountedCash = countedCash ?? summaryQuery.data?.expectedCash ?? session.expectedCash
 
   const mutation = useMutation({
     mutationFn: () =>
       closeCashSession(session.id, {
-        countedCash: formatMinorUnits(countedMinor),
-        note: note.trim() || null,
+        countedCash: formatMinorUnits(parseMinorUnits(effectiveCountedCash)),
+        ...(countedBkash.trim()
+          ? { countedBkash: formatMinorUnits(parseMinorUnits(countedBkash)) }
+          : {}),
+        ...(countedNagad.trim()
+          ? { countedNagad: formatMinorUnits(parseMinorUnits(countedNagad)) }
+          : {}),
+        ...(countedCard.trim()
+          ? { countedCard: formatMinorUnits(parseMinorUnits(countedCard)) }
+          : {}),
+        note: note.trim() || undefined,
       }),
     onSuccess: (closed) => {
       setClosedReport(closed)
@@ -1176,7 +1224,8 @@ function CloseCashSessionModal({
     },
   })
 
-  const displaySession = closedReport ?? session
+  const serverSummary = summaryQuery.data ?? session
+  const displaySession = closedReport ?? serverSummary
 
   return (
     <Modal
@@ -1198,17 +1247,8 @@ function CloseCashSessionModal({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {displaySession.byMethod.map((row) => {
-                const isCash = row.method === 'CASH'
-                const rowCounted = closedReport
-                  ? row.counted
-                  : isCash
-                    ? formatMinorUnits(countedMinor)
-                    : row.expected
-                const rowDiff = closedReport
-                  ? row.difference
-                  : isCash
-                    ? formatMinorUnits(diffMinor)
-                    : '0.00'
+                const diffValue = closedReport ? row.difference : null
+                const diffNumeric = diffValue !== null ? parseMinorUnits(diffValue) : 0
                 return (
                   <tr key={row.method}>
                     <td className="px-3 py-2 font-medium text-slate-800">{row.method}</td>
@@ -1216,18 +1256,24 @@ function CloseCashSessionModal({
                       <MoneyText amount={row.expected} />
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <MoneyText amount={rowCounted} />
+                      {closedReport && row.counted !== null ? (
+                        <MoneyText amount={row.counted} />
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                     <td
                       className={`px-3 py-2 text-right font-semibold ${
-                        parseMinorUnits(rowDiff) < 0
-                          ? 'text-rose-700'
-                          : parseMinorUnits(rowDiff) > 0
-                            ? 'text-emerald-700'
-                            : 'text-slate-600'
+                        diffValue === null
+                          ? 'text-slate-400'
+                          : diffNumeric < 0
+                            ? 'text-rose-700'
+                            : diffNumeric > 0
+                              ? 'text-emerald-700'
+                              : 'text-slate-600'
                       }`}
                     >
-                      <MoneyText amount={rowDiff} />
+                      {diffValue !== null ? <MoneyText amount={diffValue} /> : '—'}
                     </td>
                   </tr>
                 )
@@ -1250,10 +1296,39 @@ function CloseCashSessionModal({
                 type="number"
                 min="0"
                 step="0.01"
-                value={countedCash}
+                value={effectiveCountedCash}
                 onChange={(e) => setCountedCash(e.target.value)}
               />
             </FormField>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <FormField label="Counted bKash (optional)">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={countedBkash}
+                  onChange={(e) => setCountedBkash(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Counted Nagad (optional)">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={countedNagad}
+                  onChange={(e) => setCountedNagad(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Counted Card (optional)">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={countedCard}
+                  onChange={(e) => setCountedCard(e.target.value)}
+                />
+              </FormField>
+            </div>
             <FormField label="Shift note (optional)">
               <Input value={note} onChange={(e) => setNote(e.target.value)} />
             </FormField>
@@ -1296,9 +1371,37 @@ function SaleLookupAndReturnModal({
 }) {
   const [sale, setSale] = useState<SaleDetail | null>(null)
   const [returnQty, setReturnQty] = useState<Record<string, string>>({})
-  const [reason, setReason] = useState('')
+  const [dispositions, setDispositions] = useState<Record<string, ReturnDisposition>>({})
+  const [reason, setReason] = useState<ReturnReason>('CHANGED_MIND')
+  const [note, setNote] = useState('')
   const [refundResult, setRefundResult] = useState<SaleReturnRecord | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
+  const lastReturnAttemptRef = useRef<{ signature: string; key: string } | null>(null)
+
+  const returnsQuery = useQuery({
+    queryKey: ['sale', sale?.id, 'returns'],
+    queryFn: () => listSaleReturns(sale!.id),
+    enabled: Boolean(sale?.id),
+  })
+
+  const returnedByLine = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const ret of returnsQuery.data ?? []) {
+      for (const line of ret.lines) {
+        counts[line.saleLineId] = (counts[line.saleLineId] ?? 0) + line.quantity
+      }
+    }
+    return counts
+  }, [returnsQuery.data])
+
+  const totalSold = sale?.lines.reduce((sum, l) => sum + l.quantity, 0) ?? 0
+  const totalReturned = Object.values(returnedByLine).reduce((sum, q) => sum + q, 0)
+  const derivedStatus =
+    totalReturned === 0
+      ? 'COMPLETED'
+      : totalReturned >= totalSold
+        ? 'RETURNED'
+        : 'PARTIALLY_RETURNED'
 
   const returnMutation = useMutation({
     mutationFn: () => {
@@ -1306,14 +1409,26 @@ function SaleLookupAndReturnModal({
         .map((line) => ({
           saleLineId: line.id,
           quantity: Number(returnQty[line.id] ?? '0'),
+          disposition:
+            dispositions[line.id] ?? (reason === 'DEFECTIVE' ? 'INSPECTION' : 'RESTOCK'),
         }))
         .filter((l) => l.quantity > 0)
-      return createSaleReturn(sale!.id, {
-        reason: reason.trim(),
+
+      const payload = {
+        reason,
+        note: note.trim() || undefined,
         lines: selectedLines,
-      })
+      }
+      const signature = JSON.stringify({ saleId: sale!.id, payload })
+      let key = lastReturnAttemptRef.current?.key
+      if (!key || lastReturnAttemptRef.current?.signature !== signature) {
+        key = newIdempotencyKey()
+        lastReturnAttemptRef.current = { signature, key }
+      }
+      return createSaleReturn(sale!.id, payload, key)
     },
     onSuccess: (record) => {
+      lastReturnAttemptRef.current = null
       setRefundResult(record)
       onReturned()
     },
@@ -1322,15 +1437,15 @@ function SaleLookupAndReturnModal({
   function handleReturnSubmit(event: FormEvent) {
     event.preventDefault()
     if (!sale) return
-    if (!reason.trim()) {
-      setValidationError('Enter a reason for the return.')
+    if (reason === 'OTHER' && !note.trim()) {
+      setValidationError('A note is required when return reason is Other.')
       return
     }
     const chosen = sale.lines
       .map((line) => ({
         line,
         qty: Number(returnQty[line.id] ?? '0'),
-        remaining: line.quantity - line.returnedQuantity,
+        remaining: line.quantity - (returnedByLine[line.id] ?? 0),
       }))
       .filter((entry) => entry.qty > 0)
 
@@ -1362,8 +1477,11 @@ function SaleLookupAndReturnModal({
             setSale(found)
             setRefundResult(null)
             setReturnQty({})
-            setReason('')
+            setDispositions({})
+            setReason('CHANGED_MIND')
+            setNote('')
             setValidationError(null)
+            lastReturnAttemptRef.current = null
           }}
         />
 
@@ -1375,11 +1493,11 @@ function SaleLookupAndReturnModal({
                   {sale.receiptNumber}
                 </p>
                 <p className="text-xs text-slate-500">
-                  <DateText value={sale.soldAt} withTime /> · {sale.paymentMethod}
+                  <DateText value={sale.createdAt} withTime /> · {sale.paymentMethod}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <StatusPill status={sale.status} />
+                <StatusPill status={derivedStatus} />
                 {canReprint ? (
                   <Button size="sm" variant="outline" onClick={() => onReprint(sale.id)}>
                     Reprint (DUPLICATE)
@@ -1397,12 +1515,19 @@ function SaleLookupAndReturnModal({
                         <th className="px-3 py-2 text-left">Item</th>
                         <th className="px-3 py-2 text-right">Sold</th>
                         <th className="px-3 py-2 text-right">Returnable</th>
+                        <th className="px-3 py-2 text-left">Disposition</th>
                         <th className="px-3 py-2 text-right">Return qty</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {sale.lines.map((line) => {
-                        const remaining = Math.max(0, line.quantity - line.returnedQuantity)
+                        const remaining = Math.max(
+                          0,
+                          line.quantity - (returnedByLine[line.id] ?? 0),
+                        )
+                        const disp =
+                          dispositions[line.id] ??
+                          (reason === 'DEFECTIVE' ? 'INSPECTION' : 'RESTOCK')
                         return (
                           <tr key={line.id}>
                             <td className="px-3 py-2">
@@ -1411,6 +1536,23 @@ function SaleLookupAndReturnModal({
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
                             <td className="px-3 py-2 text-right tabular-nums">{remaining}</td>
+                            <td className="px-3 py-2">
+                              <Select
+                                aria-label={`Disposition for ${line.sku}`}
+                                value={disp}
+                                disabled={remaining === 0}
+                                onChange={(e) =>
+                                  setDispositions((prev) => ({
+                                    ...prev,
+                                    [line.id]: e.target.value as ReturnDisposition,
+                                  }))
+                                }
+                                className="h-7 w-28 text-xs"
+                              >
+                                <option value="RESTOCK">Restock</option>
+                                <option value="INSPECTION">Inspection</option>
+                              </Select>
+                            </td>
                             <td className="px-3 py-2 text-right">
                               <Input
                                 type="number"
@@ -1436,13 +1578,30 @@ function SaleLookupAndReturnModal({
                   </table>
                 </div>
 
-                <FormField label="Return reason" required>
-                  <Input
-                    value={reason}
-                    placeholder="e.g. Damaged item or wrong size"
-                    onChange={(e) => setReason(e.target.value)}
-                  />
-                </FormField>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField label="Return reason" required>
+                    <Select
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value as ReturnReason)}
+                    >
+                      {RETURN_REASONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormField>
+                  <FormField
+                    label={reason === 'OTHER' ? 'Note' : 'Note (optional)'}
+                    required={reason === 'OTHER'}
+                  >
+                    <Input
+                      value={note}
+                      placeholder={reason === 'OTHER' ? 'Explain return reason...' : 'Optional note'}
+                      onChange={(e) => setNote(e.target.value)}
+                    />
+                  </FormField>
+                </div>
 
                 {validationError ? (
                   <p role="alert" className="text-sm font-medium text-rose-700">
@@ -1480,14 +1639,17 @@ function SaleLookupAndReturnModal({
             className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950"
           >
             <div className="flex items-center justify-between">
-              <p className="font-semibold">Refund summary · {refundResult.refundNumber}</p>
-              <MoneyText amount={refundResult.totalRefund} className="font-bold" />
+              <p className="font-semibold">Refund summary · {refundResult.returnNumber}</p>
+              <MoneyText amount={refundResult.refundAmount} className="font-bold" />
             </div>
-            <p className="text-xs">Reason: {refundResult.reason}</p>
+            <p className="text-xs">
+              Reason: {refundResult.reason}
+              {refundResult.note ? ` · ${refundResult.note}` : ''}
+            </p>
             <ul className="list-disc pl-5 text-xs">
               {refundResult.lines.map((l) => (
                 <li key={l.saleLineId}>
-                  {l.sku} x {l.quantity} (<MoneyText amount={l.refundAmount} />)
+                  {l.sku} x {l.quantity} ({l.disposition} · <MoneyText amount={l.refundAmount} />)
                 </li>
               ))}
             </ul>

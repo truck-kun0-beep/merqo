@@ -1,8 +1,21 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchLocations } from '../api/business'
-import { createSaleReturn, fetchSale, fetchSales, reprintSaleReceipt } from '../api/pos'
-import type { ReceiptData, SaleReturnRecord, SaleSummary } from '../api/models'
+import {
+  createSaleReturn,
+  fetchSale,
+  fetchSaleReceipt,
+  fetchSales,
+  listSaleReturns,
+  reprintSaleReceipt,
+} from '../api/pos'
+import type {
+  ReceiptData,
+  ReturnDisposition,
+  ReturnReason,
+  SaleReturnRecord,
+  SaleSummary,
+} from '../api/models'
 import { filterLocationsByPermission, hasLocationPermission } from '../lib/scopes'
 import { useSession } from '../session/sessionContext'
 import { Receipt } from '../components/Receipt'
@@ -25,9 +38,23 @@ import {
   type DataTableColumn,
 } from '../components/ui'
 
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+const RETURN_REASONS: Array<{ value: ReturnReason; label: string }> = [
+  { value: 'CHANGED_MIND', label: 'Changed mind' },
+  { value: 'WRONG_SIZE', label: 'Wrong size' },
+  { value: 'DEFECTIVE', label: 'Defective' },
+  { value: 'OTHER', label: 'Other' },
+]
+
 /**
  * Sales history screen scoped to the user's permitted locations with date/receipt filters,
- * pagination, detail drawer, duplicate receipt reprint, and line-level returns.
+ * pagination, detail drawer, original receipt view, duplicate receipt reprint, and line-level returns.
  */
 export default function SalesHistoryPage() {
   const { user } = useSession()
@@ -55,7 +82,7 @@ export default function SalesHistoryPage() {
   const [page, setPage] = useState(0)
 
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null)
-  const [reprintReceipt, setReprintReceipt] = useState<ReceiptData | null>(null)
+  const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null)
 
   const effectiveLocationId = locationId || scopedLocations[0]?.id || undefined
 
@@ -73,9 +100,14 @@ export default function SalesHistoryPage() {
     placeholderData: keepPreviousData,
   })
 
+  const viewReceiptMutation = useMutation({
+    mutationFn: (saleId: string) => fetchSaleReceipt(saleId),
+    onSuccess: (receipt) => setActiveReceipt(receipt),
+  })
+
   const reprintMutation = useMutation({
     mutationFn: (saleId: string) => reprintSaleReceipt(saleId),
-    onSuccess: (receipt) => setReprintReceipt(receipt),
+    onSuccess: (receipt) => setActiveReceipt(receipt),
   })
 
   const columns: DataTableColumn<SaleSummary>[] = [
@@ -93,18 +125,18 @@ export default function SalesHistoryPage() {
       ),
     },
     {
-      key: 'soldAt',
+      key: 'createdAt',
       header: 'Date',
       render: (s) => (
         <span className="text-xs text-slate-500">
-          <DateText value={s.soldAt} withTime />
+          <DateText value={s.createdAt} withTime />
         </span>
       ),
     },
     {
       key: 'cashier',
       header: 'Cashier',
-      render: (s) => <span className="text-slate-700">{s.cashierName}</span>,
+      render: (s) => <span className="text-slate-700">{s.cashierUsername}</span>,
     },
     {
       key: 'payment',
@@ -112,15 +144,16 @@ export default function SalesHistoryPage() {
       render: (s) => <Badge tone="neutral">{s.paymentMethod}</Badge>,
     },
     {
+      key: 'itemCount',
+      header: 'Items',
+      align: 'right',
+      render: (s) => <span className="tabular-nums text-slate-700">{s.itemCount}</span>,
+    },
+    {
       key: 'total',
       header: 'Total',
       align: 'right',
       render: (s) => <MoneyText amount={s.total} className="font-semibold text-slate-900" />,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (s) => <StatusPill status={s.status} />,
     },
     {
       key: 'actions',
@@ -225,6 +258,9 @@ export default function SalesHistoryPage() {
       {reprintMutation.error ? (
         <ErrorState title="Could not reprint receipt" error={reprintMutation.error} />
       ) : null}
+      {viewReceiptMutation.error ? (
+        <ErrorState title="Could not load receipt" error={viewReceiptMutation.error} />
+      ) : null}
 
       {salesQuery.error ? (
         <ErrorState
@@ -257,6 +293,7 @@ export default function SalesHistoryPage() {
       <SaleDetailDrawer
         saleId={selectedSaleId}
         onClose={() => setSelectedSaleId(null)}
+        onViewReceipt={(saleId) => viewReceiptMutation.mutate(saleId)}
         onReprint={(saleId) => reprintMutation.mutate(saleId)}
         onReturned={() => {
           queryClient.invalidateQueries({ queryKey: ['sales'] })
@@ -264,14 +301,22 @@ export default function SalesHistoryPage() {
         }}
       />
 
-      {reprintReceipt ? (
+      {activeReceipt ? (
         <Modal
           open
-          onClose={() => setReprintReceipt(null)}
-          title={`Receipt reprint · ${reprintReceipt.receiptNumber}`}
-          footer={<Button onClick={() => window.print()}>Print duplicate</Button>}
+          onClose={() => setActiveReceipt(null)}
+          title={
+            activeReceipt.isDuplicate
+              ? `Receipt reprint · ${activeReceipt.receiptNumber}`
+              : `Receipt · ${activeReceipt.receiptNumber}`
+          }
+          footer={
+            <Button onClick={() => window.print()}>
+              {activeReceipt.isDuplicate ? 'Print duplicate' : 'Print receipt'}
+            </Button>
+          }
         >
-          <Receipt data={reprintReceipt} paperWidth="80mm" />
+          <Receipt data={activeReceipt} paperWidth="80mm" />
         </Modal>
       ) : null}
     </div>
@@ -281,11 +326,13 @@ export default function SalesHistoryPage() {
 function SaleDetailDrawer({
   saleId,
   onClose,
+  onViewReceipt,
   onReprint,
   onReturned,
 }: {
   saleId: string | null
   onClose: () => void
+  onViewReceipt: (saleId: string) => void
   onReprint: (saleId: string) => void
   onReturned: () => void
 }) {
@@ -293,9 +340,12 @@ function SaleDetailDrawer({
   const queryClient = useQueryClient()
   const [showReturnForm, setShowReturnForm] = useState(false)
   const [returnQty, setReturnQty] = useState<Record<string, string>>({})
-  const [reason, setReason] = useState('')
+  const [dispositions, setDispositions] = useState<Record<string, ReturnDisposition>>({})
+  const [reason, setReason] = useState<ReturnReason>('CHANGED_MIND')
+  const [note, setNote] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
   const [lastRefund, setLastRefund] = useState<SaleReturnRecord | null>(null)
+  const lastReturnAttemptRef = useRef<{ signature: string; key: string } | null>(null)
 
   const detailQuery = useQuery({
     queryKey: ['sale', saleId],
@@ -303,43 +353,92 @@ function SaleDetailDrawer({
     enabled: Boolean(saleId),
   })
 
+  const returnsQuery = useQuery({
+    queryKey: ['sale', saleId, 'returns'],
+    queryFn: () => listSaleReturns(saleId!),
+    enabled: Boolean(saleId),
+  })
+
+  const returnedByLine = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const ret of returnsQuery.data ?? []) {
+      for (const line of ret.lines) {
+        counts[line.saleLineId] = (counts[line.saleLineId] ?? 0) + line.quantity
+      }
+    }
+    return counts
+  }, [returnsQuery.data])
+
   const returnMutation = useMutation({
     mutationFn: () => {
       const selectedLines = (detailQuery.data?.lines ?? [])
         .map((line) => ({
           saleLineId: line.id,
           quantity: Number(returnQty[line.id] ?? '0'),
+          disposition:
+            dispositions[line.id] ?? (reason === 'DEFECTIVE' ? 'INSPECTION' : 'RESTOCK'),
         }))
         .filter((l) => l.quantity > 0)
-      return createSaleReturn(saleId!, { reason: reason.trim(), lines: selectedLines })
+
+      const payload = {
+        reason,
+        note: note.trim() || undefined,
+        lines: selectedLines,
+      }
+      const signature = JSON.stringify({ saleId, payload })
+      let key = lastReturnAttemptRef.current?.key
+      if (!key || lastReturnAttemptRef.current?.signature !== signature) {
+        key = newIdempotencyKey()
+        lastReturnAttemptRef.current = { signature, key }
+      }
+      return createSaleReturn(saleId!, payload, key)
     },
     onSuccess: (record) => {
+      lastReturnAttemptRef.current = null
       setLastRefund(record)
       setShowReturnForm(false)
       setReturnQty({})
-      setReason('')
+      setDispositions({})
+      setNote('')
       queryClient.invalidateQueries({ queryKey: ['sale', saleId] })
+      queryClient.invalidateQueries({ queryKey: ['sale', saleId, 'returns'] })
       onReturned()
     },
   })
 
   const sale = detailQuery.data
+  const returnsList = returnsQuery.data ?? []
   const canReprint = sale ? hasLocationPermission(user, 'POS_REPRINT', sale.locationId) : false
   const canRefund = sale ? hasLocationPermission(user, 'POS_REFUND', sale.locationId) : false
-  const hasReturnable = sale?.lines.some((l) => l.quantity - l.returnedQuantity > 0) ?? false
+
+  const totalSold = sale?.lines.reduce((sum, l) => sum + l.quantity, 0) ?? 0
+  const totalReturned = Object.values(returnedByLine).reduce((sum, q) => sum + q, 0)
+  const hasReturnable =
+    sale?.lines.some((l) => l.quantity - (returnedByLine[l.id] ?? 0) > 0) ?? false
+
+  const derivedStatus =
+    totalReturned === 0
+      ? 'COMPLETED'
+      : totalReturned >= totalSold
+        ? 'RETURNED'
+        : 'PARTIALLY_RETURNED'
+
+  const combinedDiscounts = sale
+    ? (Number(sale.promotionDiscount) + Number(sale.manualDiscount)).toFixed(2)
+    : '0.00'
 
   function handleReturnSubmit(event: FormEvent) {
     event.preventDefault()
     if (!sale) return
-    if (!reason.trim()) {
-      setValidationError('Return reason is required.')
+    if (reason === 'OTHER' && !note.trim()) {
+      setValidationError('A note is required when return reason is Other.')
       return
     }
     const chosen = sale.lines
       .map((line) => ({
         line,
         qty: Number(returnQty[line.id] ?? '0'),
-        remaining: line.quantity - line.returnedQuantity,
+        remaining: line.quantity - (returnedByLine[line.id] ?? 0),
       }))
       .filter((entry) => entry.qty > 0)
 
@@ -365,10 +464,11 @@ function SaleDetailDrawer({
       onClose={() => {
         setShowReturnForm(false)
         setLastRefund(null)
+        lastReturnAttemptRef.current = null
         onClose()
       }}
       title={sale ? `Sale ${sale.receiptNumber}` : 'Sale details'}
-      description={sale ? `${sale.locationName} · ${sale.cashierName}` : undefined}
+      description={sale ? `${sale.locationName} · ${sale.cashierUsername}` : undefined}
     >
       {detailQuery.isPending ? <Skeleton className="h-48 w-full" /> : null}
       {detailQuery.error ? (
@@ -378,8 +478,11 @@ function SaleDetailDrawer({
       {sale ? (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <StatusPill status={sale.status} />
+            <StatusPill status={derivedStatus} />
             <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => onViewReceipt(sale.id)}>
+                View receipt
+              </Button>
               {canReprint ? (
                 <Button size="sm" variant="outline" onClick={() => onReprint(sale.id)}>
                   Reprint (DUPLICATE)
@@ -404,21 +507,26 @@ function SaleDetailDrawer({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {sale.lines.map((line) => (
-                  <tr key={line.id}>
-                    <td className="px-3 py-2">
-                      <span className="font-medium text-slate-900">{line.productName}</span>
-                      <span className="block font-mono text-slate-500">
-                        {line.sku} · {line.variantLabel}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{line.returnedQuantity}</td>
-                    <td className="px-3 py-2 text-right font-medium">
-                      <MoneyText amount={line.lineTotal} />
-                    </td>
-                  </tr>
-                ))}
+                {sale.lines.map((line) => {
+                  const variantText = [line.color, line.size].filter(Boolean).join(' / ')
+                  const returnedCount = returnedByLine[line.id] ?? 0
+                  return (
+                    <tr key={line.id}>
+                      <td className="px-3 py-2">
+                        <span className="font-medium text-slate-900">{line.productName}</span>
+                        <span className="block font-mono text-slate-500">
+                          {line.sku}
+                          {variantText ? ` · ${variantText}` : ''}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{returnedCount}</td>
+                      <td className="px-3 py-2 text-right font-medium">
+                        <MoneyText amount={line.lineTotal} />
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -433,7 +541,7 @@ function SaleDetailDrawer({
             <div className="flex justify-between">
               <dt className="text-slate-600">Discounts</dt>
               <dd>
-                <MoneyText amount={sale.discountTotal} />
+                <MoneyText amount={combinedDiscounts} />
               </dd>
             </div>
             <div className="flex justify-between">
@@ -459,31 +567,68 @@ function SaleDetailDrawer({
               <h3 className="text-sm font-semibold text-slate-900">Return items</h3>
               <ul className="space-y-2">
                 {sale.lines.map((line) => {
-                  const remaining = Math.max(0, line.quantity - line.returnedQuantity)
+                  const remaining = Math.max(0, line.quantity - (returnedByLine[line.id] ?? 0))
                   if (remaining === 0) return null
+                  const disp =
+                    dispositions[line.id] ?? (reason === 'DEFECTIVE' ? 'INSPECTION' : 'RESTOCK')
                   return (
-                    <li key={line.id} className="flex items-center justify-between gap-2 text-xs">
+                    <li
+                      key={line.id}
+                      className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                    >
                       <span>
                         {line.productName} ({line.sku}) · max {remaining}
                       </span>
-                      <Input
-                        type="number"
-                        min="0"
-                        max={remaining}
-                        step="1"
-                        aria-label={`Return quantity for ${line.sku}`}
-                        value={returnQty[line.id] ?? '0'}
-                        onChange={(e) =>
-                          setReturnQty((prev) => ({ ...prev, [line.id]: e.target.value }))
-                        }
-                        className="h-8 w-20 text-right"
-                      />
+                      <div className="flex items-center gap-2">
+                        <Select
+                          aria-label={`Disposition for ${line.sku}`}
+                          value={disp}
+                          onChange={(e) =>
+                            setDispositions((prev) => ({
+                              ...prev,
+                              [line.id]: e.target.value as ReturnDisposition,
+                            }))
+                          }
+                          className="h-8 w-28 text-xs"
+                        >
+                          <option value="RESTOCK">Restock</option>
+                          <option value="INSPECTION">Inspection</option>
+                        </Select>
+                        <Input
+                          type="number"
+                          min="0"
+                          max={remaining}
+                          step="1"
+                          aria-label={`Return quantity for ${line.sku}`}
+                          value={returnQty[line.id] ?? '0'}
+                          onChange={(e) =>
+                            setReturnQty((prev) => ({ ...prev, [line.id]: e.target.value }))
+                          }
+                          className="h-8 w-20 text-right"
+                        />
+                      </div>
                     </li>
                   )
                 })}
               </ul>
               <FormField label="Reason" required>
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+                <Select
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value as ReturnReason)}
+                >
+                  {RETURN_REASONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField label={reason === 'OTHER' ? 'Note' : 'Note (optional)'} required={reason === 'OTHER'}>
+                <Input
+                  value={note}
+                  placeholder={reason === 'OTHER' ? 'Explain return reason...' : 'Optional return note'}
+                  onChange={(e) => setNote(e.target.value)}
+                />
               </FormField>
               {validationError ? (
                 <p role="alert" className="text-xs font-medium text-rose-700">
@@ -509,27 +654,30 @@ function SaleDetailDrawer({
               role="status"
               className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"
             >
-              Refund created: <strong>{lastRefund.refundNumber}</strong> (
-              <MoneyText amount={lastRefund.totalRefund} />)
+              Refund created: <strong>{lastRefund.returnNumber}</strong> (
+              <MoneyText amount={lastRefund.refundAmount} />)
             </div>
           ) : null}
 
-          {sale.returns.length > 0 ? (
+          {returnsList.length > 0 ? (
             <section className="space-y-2">
               <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
                 Return history
               </h3>
               <ul className="space-y-2">
-                {sale.returns.map((ret) => (
+                {returnsList.map((ret) => (
                   <li
                     key={ret.id}
                     className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs"
                   >
                     <div className="flex justify-between font-medium text-slate-900">
-                      <span>{ret.refundNumber}</span>
-                      <MoneyText amount={ret.totalRefund} />
+                      <span>{ret.returnNumber}</span>
+                      <MoneyText amount={ret.refundAmount} />
                     </div>
-                    <p className="mt-0.5 text-slate-600">{ret.reason}</p>
+                    <p className="mt-0.5 text-slate-600">
+                      {ret.reason}
+                      {ret.note ? ` · ${ret.note}` : ''}
+                    </p>
                   </li>
                 ))}
               </ul>

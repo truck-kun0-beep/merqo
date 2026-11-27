@@ -1,11 +1,17 @@
-import type { CashSessionSummary, PosLookupResponse, SaleDetail } from '../api/models'
+import type {
+  CashSessionSummary,
+  InspectionItem,
+  LookupResult,
+  SaleDetail,
+} from '../api/models'
 
 export interface MockVariantRecord {
   variantId: string
   productId: string
   productName: string
   sku: string
-  variantLabel: string
+  color: string | null
+  size: string | null
   barcodes: string[]
   listPrice: string
   costPrice: string
@@ -160,8 +166,6 @@ export function buildInitialMockVariants(): MockVariantRecord[] {
         }
         const shortColor = color.slice(0, 3).toUpperCase()
         const sku = `${prod.code}-${shortColor}-${size.replace(/\s+/g, '')}`
-
-        // Variant #40 intentionally has 0 stock to allow testing INSUFFICIENT_STOCK
         const defaultStock = seq === 40 ? 0 : 12 + (seq % 15)
 
         variants.push({
@@ -169,7 +173,8 @@ export function buildInitialMockVariants(): MockVariantRecord[] {
           productId,
           productName: prod.name,
           sku,
-          variantLabel: `${color} / ${size}`,
+          color,
+          size,
           barcodes,
           listPrice: prod.price,
           costPrice: prod.cost,
@@ -188,32 +193,82 @@ export function buildInitialMockVariants(): MockVariantRecord[] {
   return variants
 }
 
+export function buildInitialMockInspections(defaultLocationId = 'loc-1'): InspectionItem[] {
+  return [
+    {
+      locationId: defaultLocationId,
+      variantId: 'mock-var-09',
+      sku: 'CHN03-KHA-30',
+      productName: 'Slim Chino Trouser',
+      color: 'Khaki',
+      size: '30',
+      inInspection: 3,
+      onHand: 18,
+      available: 15,
+    },
+  ]
+}
+
 export function toLookupResponse(
   variant: MockVariantRecord,
-  barcode: string,
+  _barcode: string,
   locationId: string,
-): PosLookupResponse {
+): LookupResult {
   const listCents = Math.round(Number(variant.listPrice) * 100)
   const promoCents = Math.round(Number(variant.promotionDiscount) * 100)
   const netCents = Math.max(0, listCents - promoCents)
   const costCents = Math.round(Number(variant.costPrice) * 100)
+  const taxRate = Number(variant.taxRatePercent) || 0
+  const taxCents = Math.round((netCents * taxRate) / 100)
+  const totalCents = variant.taxInclusive ? netCents : netCents + taxCents
   const stock = variant.stockByLocation[locationId] ?? variant.stockByLocation.default ?? 10
 
   return {
-    variantId: variant.variantId,
-    productId: variant.productId,
-    productName: variant.productName,
-    sku: variant.sku,
-    variantLabel: variant.variantLabel,
-    barcode,
+    variant: {
+      id: variant.variantId,
+      productId: variant.productId,
+      productName: variant.productName,
+      sku: variant.sku,
+      color: variant.color,
+      size: variant.size,
+      otherAttribute: null,
+      sellingPrice: variant.listPrice,
+      isActive: true,
+      costPrice: variant.costPrice,
+    },
+    barcodes: variant.barcodes.map((b, index) => ({
+      id: `${variant.variantId}-bc-${index + 1}`,
+      barcode: b,
+      kind: index === 0 ? 'PRIMARY' : 'ALTERNATE',
+    })),
+    promotion: variant.promotionName
+      ? {
+          id: `promo-${variant.variantId}`,
+          name: variant.promotionName,
+          discountType: 'FIXED',
+          value: variant.promotionDiscount,
+          scope: 'POS',
+        }
+      : null,
     listPrice: variant.listPrice,
-    promotionName: variant.promotionName,
     promotionDiscount: variant.promotionDiscount,
+    manualDiscount: '0.00',
     netUnitPrice: (netCents / 100).toFixed(2),
+    quantity: 1,
+    subtotal: (netCents / 100).toFixed(2),
     taxRatePercent: variant.taxRatePercent,
     taxInclusive: variant.taxInclusive,
-    availableStock: stock,
+    tax: (taxCents / 100).toFixed(2),
+    total: (totalCents / 100).toFixed(2),
     belowCost: netCents < costCents,
+    cost: variant.costPrice,
+    stock: {
+      locationId,
+      onHand: stock,
+      reserved: 0,
+      available: stock,
+      inInspection: 0,
+    },
   }
 }
 
@@ -224,34 +279,48 @@ export function buildSeededSales(defaultLocationId = 'loc-1'): SaleDetail[] {
     locationId: defaultLocationId,
     locationName: 'Banani Branch',
     cashSessionId: 'sess-seed-0',
+    cashierId: 'u-cashier',
     cashierUsername: 'cashier.one',
-    cashierName: 'Ayesha Rahman',
-    soldAt: '2026-11-25T10:15:00Z',
-    status: 'COMPLETED',
+    createdAt: '2026-11-25T10:15:00Z',
     subtotal: '1350.00',
-    discountTotal: '150.00',
+    promotionDiscount: '150.00',
+    manualDiscount: '0.00',
     taxTotal: '67.50',
     total: '1417.50',
     paymentMethod: 'CASH',
-    paymentReference: null,
-    itemCount: 2,
+    changeGiven: '82.50',
+    payment: {
+      method: 'CASH',
+      amount: '1417.50',
+      tendered: '1500.00',
+      changeGiven: '82.50',
+      reference: null,
+    },
     lines: [
       {
         id: 'sl-seed-1',
+        lineIndex: 0,
         variantId: 'mock-var-01',
-        sku: 'TEE01-BLA-M',
         productName: 'Cotton Crew T-Shirt',
-        variantLabel: 'Black / M',
+        sku: 'TEE01-BLA-M',
+        barcode: '2000000000001',
+        color: 'Black',
+        size: 'M',
         quantity: 2,
-        returnedQuantity: 0,
-        unitPrice: '750.00',
-        promotionDiscount: '150.00',
+        listPrice: '750.00',
+        promotionName: 'Weekend 10% Off',
+        promotionDiscount: '75.00',
         manualDiscount: '0.00',
-        tax: '67.50',
+        billDiscountAllocated: '0.00',
+        netUnitPrice: '675.00',
+        taxRatePercent: '5.00',
+        taxInclusive: false,
+        taxAmount: '67.50',
+        lineSubtotal: '1350.00',
         lineTotal: '1417.50',
       },
     ],
-    returns: [],
+    note: null,
     receipt: {
       businessName: 'Merqo Store',
       branchName: 'Banani Branch',
@@ -267,7 +336,7 @@ export function buildSeededSales(defaultLocationId = 'loc-1'): SaleDetail[] {
           quantity: 2,
           unitPrice: '750.00',
           discount: '150.00',
-          lineTotal: '1350.00',
+          lineTotal: '1417.50',
         },
       ],
       subtotal: '1350.00',
@@ -287,34 +356,48 @@ export function buildSeededSales(defaultLocationId = 'loc-1'): SaleDetail[] {
     locationId: defaultLocationId,
     locationName: 'Banani Branch',
     cashSessionId: 'sess-seed-0',
+    cashierId: 'u-cashier',
     cashierUsername: 'cashier.one',
-    cashierName: 'Ayesha Rahman',
-    soldAt: '2026-11-25T11:40:00Z',
-    status: 'COMPLETED',
+    createdAt: '2026-11-25T11:40:00Z',
     subtotal: '1850.00',
-    discountTotal: '0.00',
+    promotionDiscount: '0.00',
+    manualDiscount: '0.00',
     taxTotal: '138.75',
     total: '1988.75',
     paymentMethod: 'BKASH',
-    paymentReference: 'BKX998812',
-    itemCount: 1,
+    changeGiven: '0.00',
+    payment: {
+      method: 'BKASH',
+      amount: '1988.75',
+      tendered: null,
+      changeGiven: '0.00',
+      reference: 'BKX998812',
+    },
     lines: [
       {
         id: 'sl-seed-2',
+        lineIndex: 0,
         variantId: 'mock-var-09',
-        sku: 'CHN03-KHA-30',
         productName: 'Slim Chino Trouser',
-        variantLabel: 'Khaki / 30',
+        sku: 'CHN03-KHA-30',
+        barcode: '2000000000041',
+        color: 'Khaki',
+        size: '30',
         quantity: 1,
-        returnedQuantity: 0,
-        unitPrice: '1850.00',
+        listPrice: '1850.00',
+        promotionName: null,
         promotionDiscount: '0.00',
         manualDiscount: '0.00',
-        tax: '138.75',
+        billDiscountAllocated: '0.00',
+        netUnitPrice: '1850.00',
+        taxRatePercent: '7.50',
+        taxInclusive: false,
+        taxAmount: '138.75',
+        lineSubtotal: '1850.00',
         lineTotal: '1988.75',
       },
     ],
-    returns: [],
+    note: null,
     receipt: {
       businessName: 'Merqo Store',
       branchName: 'Banani Branch',
@@ -330,7 +413,7 @@ export function buildSeededSales(defaultLocationId = 'loc-1'): SaleDetail[] {
           quantity: 1,
           unitPrice: '1850.00',
           discount: '0.00',
-          lineTotal: '1850.00',
+          lineTotal: '1988.75',
         },
       ],
       subtotal: '1850.00',
@@ -349,12 +432,15 @@ export function buildSeededSales(defaultLocationId = 'loc-1'): SaleDetail[] {
 
 export function buildEmptySession(
   id: string,
+  sessionNumber: string,
   locationId: string,
   openingCash: string,
 ): CashSessionSummary {
   return {
     id,
+    sessionNumber,
     locationId,
+    cashierId: 'u-cashier',
     cashierUsername: 'cashier.demo',
     openedAt: new Date().toISOString(),
     closedAt: null,
@@ -363,6 +449,7 @@ export function buildEmptySession(
     expectedCash: openingCash,
     countedCash: null,
     variance: null,
+    closeNote: null,
     saleCount: 0,
     refundTotal: '0.00',
     byMethod: [

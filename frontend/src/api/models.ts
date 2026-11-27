@@ -753,34 +753,22 @@ export interface ReceiptData {
   paymentReference: string | null
   footerText: string | null
   isDuplicate?: boolean
+  reprintCount?: number
 }
 
 // ---------------------------------------------------------------------------
-// Point of Sale & Sales History (mocked contract for backend alignment).
+// Point of Sale, Approvals, Returns & Inspections (Phase 3 backend contract).
 // ---------------------------------------------------------------------------
 
 export type PaymentMethod = 'CASH' | 'BKASH' | 'NAGAD' | 'CARD'
 
 export type PosDiscountType = 'PERCENT' | 'FIXED'
 
-export type SaleStatus = 'COMPLETED' | 'PARTIALLY_RETURNED' | 'RETURNED'
+export type ReturnReason = 'CHANGED_MIND' | 'WRONG_SIZE' | 'DEFECTIVE' | 'OTHER'
 
-export interface PosLookupResponse {
-  variantId: string
-  productId: string
-  productName: string
-  sku: string
-  variantLabel: string
-  barcode: string
-  listPrice: string
-  promotionName: string | null
-  promotionDiscount: string
-  netUnitPrice: string
-  taxRatePercent: string
-  taxInclusive: boolean
-  availableStock: number
-  belowCost: boolean
-}
+export type ReturnDisposition = 'RESTOCK' | 'INSPECTION'
+
+export type InspectionOutcome = 'RESTOCK' | 'WRITE_OFF'
 
 export interface MethodBreakdown {
   method: PaymentMethod
@@ -791,7 +779,9 @@ export interface MethodBreakdown {
 
 export interface CashSessionSummary {
   id: string
+  sessionNumber: string
   locationId: string
+  cashierId: string
   cashierUsername: string
   openedAt: string
   closedAt: string | null
@@ -800,46 +790,81 @@ export interface CashSessionSummary {
   expectedCash: string
   countedCash: string | null
   variance: string | null
+  closeNote: string | null
   saleCount: number
   refundTotal: string
   byMethod: MethodBreakdown[]
+}
+
+export interface ApprovalTokenResponse {
+  approvalToken: string
+  expiresAt: string
+  maxDiscountPercent: string
 }
 
 export interface BelowCostWarning {
   variantId: string
   sku: string
   netUnitPrice: string
-  costPrice: string
+  costPrice: string | null
 }
 
 export interface SaleLineSummary {
   id: string
+  lineIndex: number
   variantId: string
-  sku: string
   productName: string
-  variantLabel: string
+  sku: string
+  barcode: string | null
+  color: string | null
+  size: string | null
   quantity: number
-  returnedQuantity: number
-  unitPrice: string
+  listPrice: string
+  promotionName: string | null
   promotionDiscount: string
   manualDiscount: string
-  tax: string
+  billDiscountAllocated: string
+  netUnitPrice: string
+  taxRatePercent: string
+  taxInclusive: boolean
+  taxAmount: string
+  lineSubtotal: string
   lineTotal: string
+  /** Cost and below-cost flag are present only when caller has `COST_VIEW`. */
+  unitCost?: string | null
+  belowCost?: boolean
+}
+
+export interface SalePaymentDetail {
+  method: PaymentMethod
+  amount: string
+  tendered: string | null
+  changeGiven: string
+  reference: string | null
+}
+
+export interface SaleReturnLineRecord {
+  id: string
+  saleLineId: string
+  variantId: string
+  sku: string
+  quantity: number
+  refundAmount: string
+  disposition: ReturnDisposition
 }
 
 export interface SaleReturnRecord {
   id: string
-  refundNumber: string
+  returnNumber: string
+  saleId: string
+  locationId: string
   returnedAt: string
   actorUsername: string
-  reason: string
-  totalRefund: string
-  lines: Array<{
-    saleLineId: string
-    sku: string
-    quantity: number
-    refundAmount: string
-  }>
+  reason: ReturnReason
+  note: string | null
+  refundMethod: PaymentMethod
+  refundAmount: string
+  lines: SaleReturnLineRecord[]
 }
 
 export interface SaleSummary {
@@ -847,23 +872,57 @@ export interface SaleSummary {
   receiptNumber: string
   locationId: string
   locationName: string
-  cashSessionId: string
   cashierUsername: string
-  cashierName: string
-  soldAt: string
-  status: SaleStatus
+  createdAt: string
+  itemCount: number
+  total: string
+  paymentMethod: PaymentMethod
+}
+
+export interface SaleDetail {
+  id: string
+  receiptNumber: string
+  locationId: string
+  locationName: string
+  cashSessionId: string
+  cashierId: string
+  cashierUsername: string
+  createdAt: string
   subtotal: string
-  discountTotal: string
+  promotionDiscount: string
+  manualDiscount: string
   taxTotal: string
   total: string
   paymentMethod: PaymentMethod
-  paymentReference: string | null
-  itemCount: number
+  changeGiven: string
+  payment: SalePaymentDetail
+  lines: SaleLineSummary[]
+  note: string | null
+  receipt: ReceiptData
+  /** Present only when caller has `COST_VIEW`. */
+  belowCostWarnings?: BelowCostWarning[]
 }
 
-export interface SaleDetail extends SaleSummary {
-  lines: SaleLineSummary[]
-  returns: SaleReturnRecord[]
-  receipt: ReceiptData
-  belowCostWarnings?: BelowCostWarning[]
+export interface InspectionItem {
+  locationId: string
+  variantId: string
+  sku: string
+  productName: string
+  color: string | null
+  size: string | null
+  inInspection: number
+  onHand: number
+  available: number
+}
+
+export interface ResolveInspectionResponse {
+  locationId: string
+  variantId: string
+  outcome: InspectionOutcome
+  quantity: number
+  onHand: number
+  inInspection: number
+  isFlagged: boolean
+  /** Present only when caller has `COST_VIEW`. */
+  valueAtCost?: string | null
 }

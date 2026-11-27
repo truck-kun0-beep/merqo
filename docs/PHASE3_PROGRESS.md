@@ -16,9 +16,10 @@ Baseline: 353 backend tests passing, Flyway migrations V1–V5 applied.
   - Tests passing (1 test): `SaleHistoryAndScopeIntegrationTest`.
 - [x] **Slice F** (`done`): Returns and inspection (`InventoryBalance.receiveToInspection`, `InventoryService.receiveToInspection`, `SaleReturn`, `SaleReturnLine`, `ReturnReason`, `ReturnDisposition`, `ReturnService`, `ReturnController`, `InspectionService`, `InspectionController`).
   - Tests passing (2 tests): `ReturnAndInspectionIntegrationTest`.
-- [ ] **Slice G** (`not started`): Hardening tests (append-only triggers on 6 tables, Jackson cost-privacy checks, audit rows, 5 concurrency scenarios, stock invariant test).
+- [x] **Slice G** (`done`): Hardening tests (`PosHardeningIntegrationTest` — append-only triggers on all 6 tables, Jackson recursive cost-privacy checks, audit rows across all POS actions, concurrency races for last unit / idempotent submit / last returnable unit / duplicate TrxID, and exact stock balance/movement invariant).
+  - Tests passing (4 tests): `PosHardeningIntegrationTest`.
 - [ ] **Slice H** (`not started`): Demo data (`DemoDataContributor` for POS sessions/sales/returns/PINs, idempotent, `DEMO_MODE=false` check, full suite green).
 - [ ] **Slice I** (`not started`): Docs and finish (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `POS_CONTRACT.md`, `SETUP.md`, `TROUBLESHOOTING.md`, Supabase check, full suite + Spotless, final commit).
 
 ## NEXT STEP
-Run and verify Slice G hardening tests (`PosHardeningIntegrationTest`): 6 append-only trigger checks, Jackson cost-privacy checks, audit trail checks, concurrency races, and stock movement invariant.
+Implement Slice H: `DemoPosContributor` (`order = 40`), setting demo PIN `1234`, closed past sessions, open DM session for demo `cashier`, ~25 back-dated sales across DM/MP/UT with all 4 payment methods, promotions, discounts, and returns (restock + inspection), idempotency + `DEMO_MODE=false` tests, and run the full backend suite.

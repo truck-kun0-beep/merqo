@@ -14,10 +14,11 @@ Baseline: 353 backend tests passing, Flyway migrations V1–V5 applied.
   - Tests passing (3 tests): `SaleIntegrationTest`.
 - [x] **Slice E** (`done`): History and lookup (`GET /pos/sales`, `GET /pos/sales/{id}`, `GET /pos/sales/lookup?receiptNumber=`, Dhaka-day date filters, pagination, owner-aware cashier visibility, branch scope & catalog scan).
   - Tests passing (1 test): `SaleHistoryAndScopeIntegrationTest`.
-- [ ] **Slice F** (`not started`): Returns and inspection (`POST /pos/sales/{id}/returns`, `GET /pos/sales/{id}/returns`, `GET /inventory/inspections`, `POST /inventory/inspections/resolve`, tests).
+- [x] **Slice F** (`done`): Returns and inspection (`InventoryBalance.receiveToInspection`, `InventoryService.receiveToInspection`, `SaleReturn`, `SaleReturnLine`, `ReturnReason`, `ReturnDisposition`, `ReturnService`, `ReturnController`, `InspectionService`, `InspectionController`).
+  - Tests passing (2 tests): `ReturnAndInspectionIntegrationTest`.
 - [ ] **Slice G** (`not started`): Hardening tests (append-only triggers on 6 tables, Jackson cost-privacy checks, audit rows, 5 concurrency scenarios, stock invariant test).
 - [ ] **Slice H** (`not started`): Demo data (`DemoDataContributor` for POS sessions/sales/returns/PINs, idempotent, `DEMO_MODE=false` check, full suite green).
 - [ ] **Slice I** (`not started`): Docs and finish (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `POS_CONTRACT.md`, `SETUP.md`, `TROUBLESHOOTING.md`, Supabase check, full suite + Spotless, final commit).
 
 ## NEXT STEP
-Implement Slice F: Returns and inspection (`SaleReturn`, `SaleReturnLine`, `ReturnReason`, `ReturnDisposition`, repositories, `ReturnService`, `ReturnController`, `InspectionController`/`InventoryController` inspection endpoints, and integration tests).
+Run and verify Slice G hardening tests (`PosHardeningIntegrationTest`): 6 append-only trigger checks, Jackson cost-privacy checks, audit trail checks, concurrency races, and stock movement invariant.

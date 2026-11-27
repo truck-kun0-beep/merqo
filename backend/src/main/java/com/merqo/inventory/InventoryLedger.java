@@ -165,6 +165,17 @@ public class InventoryLedger implements InventoryService {
 
     @Override
     @Transactional
+    public int receiveToInspection(InventoryCommand command) {
+        StockBalance balance = lockOrCreate(command.locationId(), command.variantId());
+        InventoryBalance current = toDomain(balance);
+        InventoryBalance updated = current.receiveToInspection(command.quantity());
+        // on_hand does not change when returned goods enter inspection directly.
+        write(balance, updated, command, 0);
+        return updated.getInInspection();
+    }
+
+    @Override
+    @Transactional
     public int resolveInspection(InventoryCommand command, int accepted) {
         StockBalance balance = lockOrCreate(command.locationId(), command.variantId());
         InventoryBalance current = toDomain(balance);

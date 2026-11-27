@@ -207,6 +207,19 @@ public class InventoryBalance {
     }
 
     /**
+     * Receives returned goods directly into inspection without making them sellable.
+     *
+     * @param quantity how many returned pieces enter inspection, always positive
+     * @return the new balance
+     */
+    public InventoryBalance receiveToInspection(int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("The quantity must be positive");
+        }
+        return new InventoryBalance(onHand, reserved, inInspection + quantity);
+    }
+
+    /**
      * Finishes an inspection: the goods either go back on the shelf or are written off.
      *
      * @param quantity how many pieces the inspection covered, always positive

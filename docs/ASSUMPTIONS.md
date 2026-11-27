@@ -503,3 +503,118 @@ test that reads the newest movement first then read the wrong row.
 **Effect:** the column was added in the Flyway version `V5`, which never edits
 an applied migration. The append only trigger of the table is still in place
 and still blocks every UPDATE and every DELETE.
+
+---
+
+## A34 - The refused answer names the records that are in the way
+
+**Decision:** the answer of a refused request always has the same shape. It
+carries `fieldErrors`, `errors` and `conflicts`. The first two are empty for
+every failure but a validation failure, and the third is empty for every
+failure but a promotion conflict. A promotion conflict names every promotion
+that is in the way, the variants the two promotions share and the SKUs of those
+variants.
+
+**Reason:** the brief asks for the conflicting promotions and the variants on a
+`409 PROMOTION_CONFLICT`, and a shopkeeper needs the SKU of the goods, not the
+id of a variant. The extra field keeps the one error format of the project: the
+frontend has one `ProblemDetail` type and one `ApiError`, and the field is
+empty instead of absent for every other failure.
+
+**Effect:** the new class `com.merqo.common.error.PromotionConflictException`
+extends `ConflictException`, so the status stays 409 and the code stays
+`PROMOTION_CONFLICT`. The frontend field is optional, so an answer from an
+older backend is still read correctly. The list of the conflicts is copied when
+the exception is created, so a reported conflict cannot be changed afterwards.
+
+---
+
+## A35 - The sign out is a flag, not an emptied cache
+
+**Decision:** the session provider carries a `signedOut` flag. The flag is
+raised when the user signs out and when the server answers "who am I?" with a
+401. The signed in user is read from the cache only while the flag is down.
+
+**Reason:** `setQueryData` with `undefined` writes nothing at all, and
+`queryClient.clear()` removes the cached answer without telling the observer
+that the session ended. The shell therefore kept showing the user of the
+cached answer after the sign out, and the user was sent to the login page
+while the signed in shell was still on the screen. The flag is the one thing
+both the sign out and the 401 can set, and the screens read it, so the sign
+out takes effect on the very next render.
+
+**Effect:** `isLoading` is also false once the flag is raised, so the screen
+does not show "checking the session" for a moment after every sign out. The
+flag is lowered again by a sign in, so a second sign in in the same tab works.
+
+**Known limitation:** the flag lives in memory. A reload of the page starts a
+new session provider with the flag down, and the session call decides again.
+That is correct, because a reload asks the server who the user is.
+
+---
+
+## A36 - The live check reads every Set-Cookie header on its own
+
+**Decision:** the live check reads the `Set-Cookie` headers with
+`GetValues('Set-Cookie')` and not with the indexer of the header collection.
+
+**Reason:** the indexer of a repeated header joins the values into one string
+with a comma. The answer of the sign in carries two `Set-Cookie` headers, so
+the indexer handed back one string that holds both cookies. The strict jar
+built from that string held neither of them, and the check reported "no
+session cookie was written" on a deployment that was completely fine. The
+check now reads the headers one by one, the way the browser reads them.
+
+**Effect:** the same fix was applied to `tools\local-signout-check.ps1`, the
+script that walks the sign out through the local proxy. That script builds its
+strict jar from the `Set-Cookie` headers of the sign in answer and not from the
+jar of the session, so it proves the same thing the browser proves. The two
+scripts now report the same thing about the same deployment.
+
+---
+
+## A37 - Single-use SHA-256 approval tokens and dedicated PIN throttle
+
+**Decision:** manager discount overrides use `POST /api/v1/pos/approvals` to mint a 128-bit random URL-safe token (stored only as its SHA-256 hex digest in `approval_tokens`, valid for 5 minutes) instead of accepting the manager's raw PIN on `POST /api/v1/pos/sales`. Failed PIN checks are persisted via `PinAttemptRecorder` in a `REQUIRES_NEW` transaction so failures survive request rollback.
+
+**Reason:** passing a raw manager PIN inside `POST /pos/sales` mixes credential verification and throttling with checkout idempotency and retries. Single-use tokens bound to `(cashier, location, maxDiscountPercent)` are consumed atomically inside the sale transaction (`SELECT ... FOR UPDATE`), so concurrent checkouts cannot replay one token.
+
+---
+
+## A38 - Cash session response wrapping & backward-compatible input aliases
+
+**Decision:** `GET /api/v1/pos/sessions/current` returns `{ "session": CashSessionSummary | null }` to match the Phase 2 frontend TypeScript contract, while `/pos/sessions`, `/pos/sales`, `/pos/sales/lookup`, and `/pos/sales/{id}/returns` follow the Phase 3 `/api/v1/pos/**` routes. `SaleController` also accepts legacy Phase 2 field aliases (`amountGiven`, `trxId`, `cardReference`, `manualDiscount`) alongside `tendered`, `reference`, and flat discount fields.
+
+**Reason:** keeps existing frontend components aligned with live endpoints without breaking Phase 2 frontend contract shapes while removing client-trusted pricing fields.
+
+---
+
+## A39 - Largest-remainder whole-bill discount & last-unit return allocation
+
+**Decision:** whole-bill discounts (`PERCENT` or `FIXED` allocated across lines by `DiscountAllocator`) distribute rounding cents using the largest-remainder method weighted by pre-bill line subtotal so allocated parts sum **exactly** to the bill discount. Similarly, `ReturnRules.lineRefundAmount` refunds proportional cents per returned unit and assigns any rounding remainder to the final returned unit so a full return equals `sale_line.line_total` to the exact paisa.
+
+**Reason:** rounding every line or returned unit independently creates penny drift between order totals and cash drawer reconciliation.
+
+---
+
+## A40 - Inspection intake keeps `SUM(stock_movements.quantity_delta) == on_hand`
+
+**Decision:** when a return line uses `disposition = INSPECTION`, `InventoryLedger.receiveToInspection` increases only `in_inspection` (leaving `on_hand` unchanged) and writes a `StockMovement` with `quantityDelta = 0` (`RETURN_INSPECTION`). Resolving inspection via `POST /api/v1/inventory/inspections/resolve` decreases `in_inspection` by `quantity`, increases `on_hand` by `accepted` (`quantity` for `RESTOCK`, `0` for `WRITE_OFF`), and records `quantityDelta = accepted`.
+
+**Reason:** `in_inspection` items are quarantined off the sellable shelf, and keeping `quantityDelta = accepted` ensures `SUM(stock_movements.quantity_delta) == inventory_balances.on_hand` always holds as an exact mathematical invariant (proven by `PosHardeningIntegrationTest`).
+
+---
+
+## A41 - Six append-only POS tables and immutable closed cash sessions
+
+**Decision:** `sales`, `sale_lines`, `sale_payments`, `sale_returns`, `sale_return_lines`, and `receipt_reprints` share the existing PostgreSQL trigger function `merqo_reject_append_only_mutation()`. `cash_sessions` uses a dedicated trigger `merqo_protect_cash_session()` so an `OPEN` session can be closed once and then becomes immutable (`CLOSED` rows cannot be updated, and no session row can be deleted).
+
+**Reason:** sales, payments, returns, and duplicate print logs are financial audit records ("a sale is final; corrections are returns"), while cash sessions transition cleanly `OPEN -> CLOSED` once and freeze forever.
+
+---
+
+## A42 - Explicit `Clock` / `Instant` and PIN bypass strictly gated by `DEMO_MODE=true`
+
+**Decision:** `SaleService.createSaleForDemo`, `ReturnService.createReturnForDemo`, `CashSessionService.openForDemo`/`closeForDemo`, and `ApprovalService.setApprovalPinForDemo` exist strictly for `DemoPosContributor` (`@ConditionalOnProperty(name = "merqo.demo-mode", havingValue = "true")`) to back-date 14 days of demo history and seed demo PIN `1234` without exposing timestamp overrides on any HTTP controller.
+
+**Reason:** public POS APIs must always stamp server `Clock` time and enforce PIN complexity/throttling, while realistic demo reports require multi-day sales history across branches.

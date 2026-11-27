@@ -275,6 +275,7 @@ async function toApiError(response: Response): Promise<ApiError> {
       timestamp: new Date().toISOString(),
       fieldErrors: {},
       errors: [],
+      conflicts: [],
     }
   }
 

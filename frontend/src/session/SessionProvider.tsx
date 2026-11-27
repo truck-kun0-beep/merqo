@@ -32,6 +32,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // for the retries would leave the user looking at a spinner for a minute.
   const [unreachable, setUnreachable] = useState(false)
 
+  // The flag that says "the user asked to sign out".
+  //
+  // The answer of the server stays in the cache for a while, and the cache is
+  // not told that the session ended. `setQueryData` with `undefined` writes
+  // nothing at all, so the cached user would survive the sign out and the
+  // screens would keep showing the signed in shell. This flag is what the
+  // screens read, so the sign out takes effect on the very next render.
+  const [signedOut, setSignedOut] = useState(false)
+
   const query = useQuery({
     queryKey: SESSION_QUERY_KEY,
     queryFn: async () => {
@@ -42,6 +51,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (error instanceof BackendUnreachableError) {
           setUnreachable(true)
+        }
+        if (error instanceof ApiError && error.status === 401) {
+          // Nobody is signed in any more, so the screens must not keep showing
+          // the signed in shell with the answer the cache still holds.
+          setSignedOut(true)
         }
         throw error
       }
@@ -63,7 +77,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     staleTime: 30_000,
   })
 
-  const user = query.data
+  const user = signedOut ? undefined : query.data
 
   const can = useCallback(
     (code: string) => user?.permissions.some((permission) => permission.code === code) ?? false,
@@ -73,6 +87,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (identifier: string, password: string) => {
       const signedIn = await loginRequest(identifier, password)
+      setSignedOut(false)
       queryClient.setQueryData(SESSION_QUERY_KEY, signedIn)
       return signedIn
     },
@@ -82,6 +97,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signInAsDemo = useCallback(
     async (accountKey: string) => {
       const signedIn = await loginAsDemoAccount(accountKey)
+      setSignedOut(false)
       queryClient.setQueryData(SESSION_QUERY_KEY, signedIn)
       return signedIn
     },
@@ -92,21 +108,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       await logoutRequest()
     } finally {
-      queryClient.setQueryData(SESSION_QUERY_KEY, undefined)
+      // The session is gone on the server, so the cached answer of "who am I?"
+      // has to go with it. Writing `undefined` with `setQueryData` does
+      // nothing at all, so the cache is emptied and the flag is raised.
+      setSignedOut(true)
       queryClient.clear()
     }
   }, [queryClient])
 
   const requireSession = useCallback(() => {
     if (query.error instanceof ApiError && query.error.status === 401) {
-      queryClient.setQueryData(SESSION_QUERY_KEY, undefined)
+      setSignedOut(true)
     }
-  }, [query.error, queryClient])
+  }, [query.error])
 
   const value = useMemo<SessionState>(
     () => ({
       user,
-      isLoading: query.isPending && !unreachable,
+      // A signed out session is known, so the screens must not wait for a
+      // call that cannot succeed. The screen would show "checking the
+      // session" for a moment after every sign out.
+      isLoading: query.isPending && !unreachable && !signedOut,
       isBackendUnreachable: unreachable,
       can,
       signIn,
@@ -114,7 +136,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signOut,
       requireSession,
     }),
-    [user, query.isPending, unreachable, can, signIn, signInAsDemo, signOut, requireSession],
+    [
+      user,
+      query.isPending,
+      unreachable,
+      signedOut,
+      can,
+      signIn,
+      signInAsDemo,
+      signOut,
+      requireSession,
+    ],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

@@ -543,3 +543,27 @@ for (UUID locationId : locations) {
 ```
 
 So a branch manager may create a POS promotion for their own branches only.
+
+---
+
+## 12. Phase 3 POS, approval & inspection enforcement
+
+### POS, Approval & Inspection Permissions
+
+| Action / Endpoint | Permission required | Scope & extra rules |
+| --- | --- | --- |
+| `POST /api/v1/pos/sessions`, `POST /api/v1/pos/sessions/{id}/close` | `POS_CASH_SESSION` | Branch assignment required (`404` outside scope). At most one `OPEN` session per cashier. |
+| `GET /api/v1/pos/sessions/current`, `GET /api/v1/pos/sessions/{id}/summary` | `POS_CASH_SESSION` or `POS_SELL` (or owner) | Managers/owners may inspect sessions at their assigned branches; cashiers only their own. |
+| `PUT /api/v1/auth/approval-pin` | `OWNER` or `POS_DISCOUNT_APPROVE` at any assigned branch | Sets/updates own BCrypt-hashed 4–8 digit approval PIN after verifying current password. |
+| `POST /api/v1/pos/approvals` | Cashier assigned at `locationId` + PIN of approver holding `POS_DISCOUNT_APPROVE` at `locationId` | Wrong PIN locks after 5 failures in 15 min (`423 APPROVAL_LOCKED`). Token is single-use, 5-min TTL, bound to `(cashier, location)`. |
+| `POST /api/v1/pos/sales` | `POS_SELL` (+ `POS_DISCOUNT` when any manual discount is sent) | Open cash session required (`409 POS_SESSION_REQUIRED`). Over-limit percent discount requires `approvalToken` (`422 DISCOUNT_LIMIT_EXCEEDED`). |
+| `GET /api/v1/pos/sales`, `GET /api/v1/pos/sales/{id}`, `GET /api/v1/pos/sales/lookup`, `GET /api/v1/pos/sales/{id}/receipt` | `POS_SELL` or `POS_REFUND` | Owner-aware history visibility: cashiers without `DISCOUNT_MANAGE`, `DASHBOARD_VIEW`, `FINANCE_REPORT_VIEW`, or `AUDIT_VIEW` at that branch see only their own sales; managers see all branch sales; other branches return `404`. |
+| `POST /api/v1/pos/sales/{id}/reprint` | `POS_REPRINT` at sale's `locationId` | Logs append-only `receipt_reprints` row and `RECEIPT_REPRINTED` audit event. |
+| `POST /api/v1/pos/sales/{id}/returns`, `GET /api/v1/pos/sales/{id}/returns` | `POS_REFUND` at sale's `locationId` | Expired `pos.return_window_days` may only be overridden when caller holds `POS_DISCOUNT_APPROVE` at that branch. |
+| `GET /api/v1/inventory/inspections` | `INVENTORY_VIEW` | Filtered to `context.visibleLocationIds(INVENTORY_VIEW)`. |
+| `POST /api/v1/inventory/inspections/resolve` | `INVENTORY_ADJUST` at `locationId` | Moves inspected stock back to `on_hand` (`RESTOCK`) or removes it (`WRITE_OFF`). |
+
+### Cost privacy across Phase 3
+
+Every Phase 3 response (`POST /pos/sales`, `GET /pos/sales`, `GET /pos/sales/{id}`, `GET /pos/sales/lookup`, `GET /pos/sales/{id}/receipt`, `POST /pos/sales/{id}/reprint`, `POST /pos/sales/{id}/returns`, `POST /inventory/inspections/resolve`) checks `COST_VIEW` (or `COST_VIEW` / `PRICE_EDIT` on inspection resolve) at the sale/location before adding `unitCost`, `belowCost`, `belowCostWarnings`, or `valueAtCost`. Cashiers without `COST_VIEW` never receive those JSON keys at all (verified recursively with Jackson in `PosHardeningIntegrationTest`).
+

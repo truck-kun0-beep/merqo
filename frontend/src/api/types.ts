@@ -1,4 +1,18 @@
 /**
+ * One promotion that a new promotion fights.
+ *
+ * The backend names the promotion, the variants the two share and the SKUs of
+ * those variants, so the screen can show the fight without loading the
+ * catalogue.
+ */
+export interface PromotionConflictDetail {
+  id: string
+  name: string
+  variantIds: string[]
+  skus: string[]
+}
+
+/**
  * The shape of a backend error.
  *
  * The backend answers every failure with an RFC 7807 problem detail, so the
@@ -16,6 +30,8 @@ export interface ProblemDetail {
   timestamp: string
   fieldErrors: Record<string, string>
   errors: string[]
+  /** The records that caused the failure. Empty for every failure but a promotion conflict. */
+  conflicts?: PromotionConflictDetail[]
 }
 
 /**
@@ -58,6 +74,8 @@ export class ApiError extends Error {
   readonly errorCode: string
   readonly correlationId: string
   readonly fieldErrors: Record<string, string>
+  /** The records that caused the failure. Empty for every failure but a promotion conflict. */
+  readonly conflicts: PromotionConflictDetail[]
 
   constructor(problem: ProblemDetail) {
     super(problem.detail || problem.title || 'Request failed')
@@ -66,6 +84,7 @@ export class ApiError extends Error {
     this.errorCode = problem.errorCode
     this.correlationId = problem.correlationId
     this.fieldErrors = problem.fieldErrors ?? {}
+    this.conflicts = problem.conflicts ?? []
   }
 }
 

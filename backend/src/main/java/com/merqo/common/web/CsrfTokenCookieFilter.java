@@ -19,19 +19,19 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <p>Responsibility: read the token that the {@code CsrfFilter} put on the request, ask for its
  * value, and make sure the {@code XSRF-TOKEN} cookie is part of the answer.
  *
- * <p><b>Why the cookie has to be on every answer.</b> The token of Spring Security is <b>deferred</b>:
- * the value only exists once something asks for it. The cookie repository writes the cookie when it
- * generates a token, so a request that already carried a cookie got no new one in its answer. A sign
- * in therefore answered with the session cookie alone.
+ * <p><b>Why the cookie has to be on every answer.</b> The token of Spring Security is
+ * <b>deferred</b>: the value only exists once something asks for it. The cookie repository writes
+ * the cookie when it generates a token, so a request that already carried a cookie got no new one
+ * in its answer. A sign in therefore answered with the session cookie alone.
  *
  * <p>That is exactly the bug that broke the live site. The browser sent the next request with the
- * token it had, but the answer to the sign in had changed the session, and the token of the answer no
- * longer belonged to the session the browser was in. Every request that changed something was then
- * refused with a 403: the sign out and the creation of an account failed.
+ * token it had, but the answer to the sign in had changed the session, and the token of the answer
+ * no longer belonged to the session the browser was in. Every request that changed something was
+ * then refused with a 403: the sign out and the creation of an account failed.
  *
- * <p>The rule now is simple: <b>every answer carries the token of that answer.</b> The browser always
- * holds a token that belongs to the session it is in, so the next request that changes something can
- * send it back and is accepted.
+ * <p>The rule now is simple: <b>every answer carries the token of that answer.</b> The browser
+ * always holds a token that belongs to the session it is in, so the next request that changes
+ * something can send it back and is accepted.
  *
  * <p>The token is not a secret. It only proves that the request came from this site and not from
  * another one, which is why it may travel in a cookie that JavaScript can read.
@@ -78,8 +78,8 @@ public class CsrfTokenCookieFilter extends OncePerRequestFilter {
     /**
      * Writes the token cookie, unless the answer already carries one.
      *
-     * <p>The repository writes the cookie, so the name, the path and the flags of the cookie are the
-     * ones of the application and not a second copy of them.
+     * <p>The repository writes the cookie, so the name, the path and the flags of the cookie are
+     * the ones of the application and not a second copy of them.
      *
      * @param request the current request
      * @param response the answer

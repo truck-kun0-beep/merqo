@@ -10,6 +10,10 @@ import java.util.Map;
  * <p>Responsibility: describe a failure in a format that follows RFC 7807 ("problem details") so
  * the frontend can render any error without special cases.
  *
+ * <p><b>The conflicts field.</b> Most failures carry no extra information and the field is empty. A
+ * promotion conflict is the one failure that has to name what it fights, so the conflicts are part
+ * of the answer and the browser can show them without a second call.
+ *
  * <p>OOP concepts demonstrated:
  *
  * <ul>
@@ -29,6 +33,7 @@ import java.util.Map;
  * @param timestamp when the failure happened
  * @param fieldErrors per field validation failures, empty when not applicable
  * @param errors additional stable codes, empty when not applicable
+ * @param conflicts the records that caused the failure, empty when not applicable
  */
 public record ProblemDetail(
         String type,
@@ -40,7 +45,8 @@ public record ProblemDetail(
         String correlationId,
         Instant timestamp,
         Map<String, String> fieldErrors,
-        List<String> errors) {
+        List<String> errors,
+        List<Map<String, Object>> conflicts) {
 
     /**
      * Builds a problem detail for a failure without field level information.
@@ -74,6 +80,45 @@ public record ProblemDetail(
                 correlationId,
                 timestamp,
                 Map.of(),
+                List.of(),
                 List.of());
+    }
+
+    /**
+     * Builds a problem detail for a failure that names the records in the way.
+     *
+     * @param type the problem type URI
+     * @param title the short summary
+     * @param status the HTTP status
+     * @param detail the explanation
+     * @param instance the request URI
+     * @param errorCode the stable error code
+     * @param correlationId the request correlation id
+     * @param timestamp when the failure happened
+     * @param conflicts the records in the way
+     * @return the problem detail
+     */
+    public static ProblemDetail withConflicts(
+            String type,
+            String title,
+            int status,
+            String detail,
+            String instance,
+            String errorCode,
+            String correlationId,
+            Instant timestamp,
+            List<Map<String, Object>> conflicts) {
+        return new ProblemDetail(
+                type,
+                title,
+                status,
+                detail,
+                instance,
+                errorCode,
+                correlationId,
+                timestamp,
+                Map.of(),
+                List.of(),
+                List.copyOf(conflicts));
     }
 }

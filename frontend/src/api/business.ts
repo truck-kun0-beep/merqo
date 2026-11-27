@@ -420,4 +420,3 @@ export function saveSettings(values: Record<string, string>): Promise<Record<str
     body: JSON.stringify({ values }),
   })
 }
-

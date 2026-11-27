@@ -180,6 +180,74 @@ class InventoryIntegrationTest extends ScopeTestSupport {
     }
 
     @Test
+    @DisplayName("an adjustment answer carries the SKU of every line")
+    void anAdjustmentAnswerCarriesTheSkuOfEveryLine() throws Exception {
+        Cookie owner = signIn("owner");
+        Location branch = location(BRANCH_CODE);
+        String sku = uniqueSku();
+        UUID variantId = createVariant(owner, sku, null);
+
+        MvcResult created =
+                mockMvc.perform(
+                                post("/api/v1/inventory/adjustments")
+                                        .cookie(owner)
+                                        .with(CsrfTestSupport.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"locationId\":\""
+                                                        + branch.getId()
+                                                        + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
+                                                        + variantId
+                                                        + "\",\"quantityDelta\":2}]}"))
+                        .andExpect(status().isCreated())
+                        .andReturn();
+
+        String adjustmentId = readJson(created).get("id").asText();
+
+        // The screen shows the document, so every line has to carry the goods it is about.
+        mockMvc.perform(get("/api/v1/inventory/adjustments/{id}", adjustmentId).cookie(owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.number").isNotEmpty())
+                .andExpect(jsonPath("$.reason").value("FOUND"))
+                .andExpect(jsonPath("$.lines.length()").value(1))
+                .andExpect(jsonPath("$.lines[0].variantId").value(variantId.toString()))
+                .andExpect(jsonPath("$.lines[0].sku").value(sku));
+    }
+
+    @Test
+    @DisplayName("an adjustment of another branch is not found")
+    void anAdjustmentOfAnotherBranchIsNotFound() throws Exception {
+        Cookie owner = signIn("owner");
+        Cookie manager = signIn("manager-dm");
+        // Uttara is not one of the branches of the manager of Dhanmondi and Mirpur.
+        Location other = location("UT");
+        UUID variantId = createVariant(owner, uniqueSku(), null);
+
+        MvcResult created =
+                mockMvc.perform(
+                                post("/api/v1/inventory/adjustments")
+                                        .cookie(owner)
+                                        .with(CsrfTestSupport.csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"locationId\":\""
+                                                        + other.getId()
+                                                        + "\",\"reason\":\"FOUND\",\"lines\":[{\"variantId\":\""
+                                                        + variantId
+                                                        + "\",\"quantityDelta\":1}]}"))
+                        .andExpect(status().isCreated())
+                        .andReturn();
+
+        // The manager of another branch may not even learn that the document exists.
+        assertOutOfScope(
+                mockMvc.perform(
+                        get(
+                                        "/api/v1/inventory/adjustments/{id}",
+                                        readJson(created).get("id").asText())
+                                .cookie(manager)));
+    }
+
+    @Test
     @DisplayName("a count is blind while it is in progress")
     void aCountIsBlindWhileItIsInProgress() throws Exception {
         Cookie owner = signIn("owner");

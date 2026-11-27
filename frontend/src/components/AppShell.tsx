@@ -95,8 +95,15 @@ export default function AppShell() {
 
   async function handleSignOut() {
     setUserMenuOpen(false)
-    await signOut()
-    navigate('/login', { replace: true })
+    try {
+      await signOut()
+    } catch {
+      // The server refused the sign out, for example because it could not be
+      // reached. The session state is cleared anyway, so the user still leaves
+      // the signed in shell and lands on the login page.
+    } finally {
+      navigate('/login', { replace: true })
+    }
   }
 
   const navGroups: NavGroup[] = [

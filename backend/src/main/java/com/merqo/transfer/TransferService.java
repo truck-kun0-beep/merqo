@@ -21,6 +21,9 @@ import com.merqo.access.Permission;
 import com.merqo.audit.AuditAction;
 import com.merqo.audit.AuditEvent;
 import com.merqo.audit.AuditService;
+import com.merqo.catalog.Product;
+import com.merqo.catalog.ProductRepository;
+import com.merqo.catalog.ProductVariant;
 import com.merqo.catalog.ProductVariantRepository;
 import com.merqo.catalog.VariantCostHistory;
 import com.merqo.catalog.VariantCostHistoryRepository;
@@ -75,6 +78,7 @@ public class TransferService {
     private final StockTransferItemRepository itemRepository;
     private final TransferStatusHistoryRepository historyRepository;
     private final ProductVariantRepository variantRepository;
+    private final ProductRepository productRepository;
     private final VariantCostHistoryRepository costHistoryRepository;
     private final LocationRepository locationRepository;
     private final InventoryService inventoryService;
@@ -89,6 +93,7 @@ public class TransferService {
      * @param itemRepository the lines of the transfers
      * @param historyRepository the status history
      * @param variantRepository the variants
+     * @param productRepository the products the variants belong to
      * @param costHistoryRepository the cost history
      * @param locationRepository the locations
      * @param inventoryService the one place where the stock changes
@@ -101,6 +106,7 @@ public class TransferService {
             StockTransferItemRepository itemRepository,
             TransferStatusHistoryRepository historyRepository,
             ProductVariantRepository variantRepository,
+            ProductRepository productRepository,
             VariantCostHistoryRepository costHistoryRepository,
             LocationRepository locationRepository,
             InventoryService inventoryService,
@@ -111,6 +117,7 @@ public class TransferService {
         this.itemRepository = itemRepository;
         this.historyRepository = historyRepository;
         this.variantRepository = variantRepository;
+        this.productRepository = productRepository;
         this.costHistoryRepository = costHistoryRepository;
         this.locationRepository = locationRepository;
         this.inventoryService = inventoryService;
@@ -637,6 +644,10 @@ public class TransferService {
     /**
      * The answer of one line of a transfer.
      *
+     * <p>The line carries the SKU and the name of the goods, so the screen shows something a
+     * shopkeeper recognises instead of a bare id. The numbers of the line are the ones of the
+     * transfer itself.
+     *
      * @param item the line
      * @return the map
      */
@@ -644,6 +655,8 @@ public class TransferService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", item.getId());
         body.put("variantId", item.getVariantId());
+        body.put("sku", skuOf(item.getVariantId()));
+        body.put("productName", variantNameOf(item.getVariantId()));
         body.put("requestedQuantity", item.getRequestedQuantity());
         body.put("approvedQuantity", item.getApprovedQuantity());
         body.put("dispatchedQuantity", item.getDispatchedQuantity());
@@ -738,6 +751,50 @@ public class TransferService {
                 .findLatest(variantId)
                 .map(VariantCostHistory::getValue)
                 .orElse(null);
+    }
+
+    /**
+     * The SKU of a variant, so the screen shows a name a shopkeeper recognises.
+     *
+     * @param variantId the variant
+     * @return the SKU, or {@code null} when the variant is gone
+     */
+    private String skuOf(UUID variantId) {
+        return variantRepository.findById(variantId).map(ProductVariant::getSku).orElse(null);
+    }
+
+    /**
+     * The name of a variant, so the screen shows a name a shopkeeper recognises.
+     *
+     * <p>The name is the name of the product, and the colour and the size are added when the
+     * variant has them. It is the same shape the stock list uses, so a shopkeeper sees the same
+     * text in every screen.
+     *
+     * @param variantId the variant
+     * @return the name, or {@code null} when the variant is gone
+     */
+    private String variantNameOf(UUID variantId) {
+        ProductVariant variant = variantRepository.findById(variantId).orElse(null);
+        if (variant == null) {
+            return null;
+        }
+        String productName =
+                productRepository
+                        .findById(variant.getProductId())
+                        .map(Product::getName)
+                        .orElse(null);
+        if (productName == null) {
+            return variant.getSku();
+        }
+        List<String> parts = new ArrayList<>();
+        parts.add(productName);
+        if (variant.getColor() != null && !variant.getColor().isBlank()) {
+            parts.add(variant.getColor());
+        }
+        if (variant.getSize() != null && !variant.getSize().isBlank()) {
+            parts.add(variant.getSize());
+        }
+        return String.join(" - ", parts);
     }
 
     private void writeHistory(

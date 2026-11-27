@@ -122,6 +122,7 @@ common/
 │   ├── BusinessException.java  abstract parent of every expected failure
 │   ├── NotFoundException.java
 │   ├── ConflictException.java
+│   ├── PromotionConflictException.java  a conflict that names what it fights
 │   ├── ValidationException.java
 │   ├── ForbiddenException.java
 │   ├── UnauthenticatedException.java
@@ -265,6 +266,46 @@ another. It owns the tables `stock_transfers`, `stock_transfer_items` and
 is the plain Java class `TransferTransitions`, and the quantity rules of one
 line are in `TransferLine`.
 
+---
+
+## 3b. The POS module built in Phase 3
+
+Phase 3 implements the in-store Point of Sale counter checkout, cash drawer
+sessions, manager discount PIN approvals, idempotent sales, receipts &
+reprints, sales history & lookup, sale returns, and returned-item inspection
+resolution across `com.merqo.pos` and `com.merqo.inventory`:
+
+- **Cash drawer sessions** (`CashSessionController`, `CashSessionService`): open,
+  live current/summary, and close reconciliation backed by
+  `CashSessionReconciler`, one-open-session partial unique index
+  `ux_cash_sessions_one_open_per_cashier`, and the closed-session immutability
+  trigger `merqo_protect_cash_session()`.
+- **Approval PINs & tokens** (`AuthController` `/auth/approval-pin`,
+  `ApprovalController`, `ApprovalService`, `PinAttemptRecorder`): BCrypt PIN
+  storage, 5-attempt / 15-minute lockout (`REQUIRES_NEW`), and single-use
+  128-bit SHA-256 tokens with a 5-minute TTL from `Clock`.
+- **Sales, receipts & reprints** (`SaleController`, `SaleService`,
+  `SaleCalculator`, `DiscountAllocator`, `DiscountLimitPolicy`, `PaymentRules`,
+  `ReceiptNumber`, `JsonReceiptRenderer`, `PlainTextReceiptRenderer`): strictly
+  server-side pricing, `POS`-scope promotion lookup (`PromotionService.resolveAt`),
+  largest-remainder whole-bill discount allocation, single-method payment rules
+  (global TrxID uniqueness for `BKASH`/`NAGAD`, card PAN Luhn/digit rejection),
+  `InventoryService.remove` stock deduction inside the same ACID transaction,
+  and per-cashier idempotency key (`409 IDEMPOTENCY_CONFLICT` on mismatched
+  payloads).
+- **Sales history & scope** (`GET /pos/sales`, `GET /pos/sales/{id}`,
+  `GET /pos/sales/lookup`): `Asia/Dhaka` business-day filtering, pagination,
+  owner/manager vs single-cashier visibility, cross-branch `404`, and
+  `COST_VIEW`-gated cost/margin suppression.
+- **Returns & inspection** (`ReturnController`, `ReturnService`, `ReturnRules`,
+  `InspectionController`, `InspectionService`, `InventoryService.receiveToInspection`):
+  partial/full line returns with last-unit remainder refund accuracy,
+  `pos.return_window_days` check (overridable by `POS_DISCOUNT_APPROVE`), cash
+  refund adjustment to `expectedCash`, and `RESTOCK` vs `INSPECTION` workflow.
+- **Append-only guarantees:** six tables (`sales`, `sale_lines`,
+  `sale_payments`, `sale_returns`, `sale_return_lines`, `receipt_reprints`)
+  enforce append-only immutability via `merqo_reject_append_only_mutation()`.
+
 ### The three rules that hold the Phase 2 modules together
 
 **The dependency rule is one way.** Controllers call services, services call
@@ -330,7 +371,7 @@ Exception
   ▼
 GlobalExceptionHandler      ← turns it into one RFC 7807 problem detail
   ▼
-Browser                     ← {errorCode, detail, correlationId, fieldErrors, ...}
+Browser                     ← {errorCode, detail, correlationId, fieldErrors, conflicts, ...}
 ```
 
 ---
@@ -449,7 +490,9 @@ backend/src/main/resources/db/migration/
 ├── V1__baseline_schema.sql
 ├── V2__access_control_and_auth.sql
 ├── V3__seed_permission_templates.sql
-└── V4__catalog_inventory_and_transfers.sql
+├── V4__catalog_inventory_and_transfers.sql
+├── V5__stock_movement_sequence.sql
+└── V6__pos_sales_sessions_and_returns.sql
 ```
 
 Every later prompt adds `V5__...` and so on. A migration is never

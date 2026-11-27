@@ -91,6 +91,14 @@ public interface InventoryService {
     int moveToInspection(InventoryCommand command);
 
     /**
+     * Receives returned goods directly into inspection without adding them to sellable stock.
+     *
+     * @param command the change
+     * @return the quantity in inspection after the change
+     */
+    int receiveToInspection(InventoryCommand command);
+
+    /**
      * Finishes an inspection. The accepted goods go back on the shelf, the rest is written off.
      *
      * @param command the change

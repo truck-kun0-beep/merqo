@@ -18,10 +18,28 @@ function createClient() {
   })
 }
 
+/**
+ * Stubs the fetch of the tests.
+ *
+ * A route is matched on the url, so the same path can answer two different
+ * requests only when the route names the method too: the key `POST /promotions`
+ * answers the creation of a promotion, while `/promotions` answers the list.
+ *
+ * @param routes the routes, keyed by url or by `METHOD url`
+ * @returns the stub
+ */
 function stubFetch(routes: Record<string, { status?: number; body: unknown }>) {
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    const key = Object.keys(routes).find((candidate) => url.includes(candidate))
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const key = Object.keys(routes).find((candidate) => {
+      const separator = candidate.indexOf(' ')
+      if (separator < 0) {
+        return url.includes(candidate)
+      }
+      const wanted = candidate.slice(0, separator).toUpperCase()
+      return wanted === method && url.includes(candidate.slice(separator + 1))
+    })
     const route = key ? routes[key] : { status: 200, body: [] }
     const status = route.status ?? 200
     return {
@@ -303,6 +321,109 @@ describe('Phase 2 screens', () => {
     expect(screen.getByLabelText(/End the conflicting promotions now/)).toBeInTheDocument()
   })
 
+  it('shows the conflicting promotions the backend names when a promotion is refused', async () => {
+    const owner: CurrentUser = {
+      ...staffWithoutCost,
+      accountType: 'OWNER',
+      permissions: [
+        {
+          code: 'DISCOUNT_MANAGE',
+          module: 'CATALOG',
+          description: 'Manage discounts',
+          scope: 'ALL',
+          locationIds: [],
+        },
+      ],
+    }
+
+    stubFetch({
+      '/auth/me': { body: owner },
+      '/locations': { body: [] },
+      '/catalog/products': {
+        body: {
+          items: [
+            {
+              id: 'p-1',
+              name: 'Cotton Tee',
+              variants: [
+                {
+                  id: 'v-1',
+                  sku: 'OT001-BLK-M',
+                  color: 'Black',
+                  size: 'M',
+                  sellingPrice: '500',
+                  isActive: true,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      '/catalog/variants': {
+        body: {
+          items: [
+            {
+              id: 'v-1',
+              productId: 'p-1',
+              sku: 'OT001-BLK-M',
+              color: 'Black',
+              size: 'M',
+              otherAttribute: null,
+              sellingPrice: '500',
+              isActive: true,
+            },
+          ],
+        },
+      },
+      'POST /promotions': {
+        status: 409,
+        body: {
+          type: 'https://merqo.dev/problems/promotion_conflict',
+          title: 'Conflict',
+          status: 409,
+          detail: 'This promotion fights 1 promotion(s) that are already there.',
+          instance: '/api/v1/promotions',
+          errorCode: 'PROMOTION_CONFLICT',
+          correlationId: 'corr-1',
+          timestamp: '2026-11-20T10:00:00Z',
+          fieldErrors: {},
+          errors: [],
+          conflicts: [
+            {
+              id: 'promo-1',
+              name: 'Winter Promo',
+              variantIds: ['v-1'],
+              skus: ['OT001-BLK-M'],
+            },
+          ],
+        },
+      },
+    })
+
+    render(
+      <QueryClientProvider client={createClient()}>
+        <SessionProvider>
+          <MemoryRouter>
+            <PromotionsPage />
+          </MemoryRouter>
+        </SessionProvider>
+      </QueryClientProvider>,
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'New promotion' }))
+    await userEvent.type(screen.getByLabelText('Promotion name'), 'Flash Sale')
+    await userEvent.click(await screen.findByLabelText(/Cotton Tee/))
+    await userEvent.click(screen.getByRole('button', { name: 'Preview promotion' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Save promotion' }))
+
+    // The answer of the backend names the promotion that is in the way and the goods it shares.
+    const conflictAlert = await screen.findByRole('alert')
+    await waitFor(() => {
+      expect(conflictAlert).toHaveTextContent('Winter Promo')
+    })
+    expect(conflictAlert).toHaveTextContent('OT001-BLK-M')
+  })
+
   it('never renders system quantities in DOM during blind IN_PROGRESS stock count', async () => {
     stubFetch({
       '/auth/me': { body: staffWithoutCost },
@@ -418,6 +539,8 @@ describe('Phase 2 screens', () => {
             {
               id: 'tl-1',
               variantId: 'v-1',
+              sku: 'OT001-BLK-M',
+              productName: 'Cotton Tee',
               requestedQuantity: 10,
               approvedQuantity: 8,
               dispatchedQuantity: 0,
@@ -448,6 +571,9 @@ describe('Phase 2 screens', () => {
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Receive' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+    // The line shows the goods a shopkeeper recognises, not only the id of the variant.
+    expect(await screen.findByText('OT001-BLK-M')).toBeInTheDocument()
+    expect(screen.getByText('Cotton Tee')).toBeInTheDocument()
   })
 
   it('displays row-numbered errors returned by CSV import validation', async () => {

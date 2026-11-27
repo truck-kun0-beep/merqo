@@ -42,13 +42,13 @@ import com.merqo.user.AppUserRepository;
  * the browser already has the token it read from the cookie. If the sign in answer does not carry a
  * usable CSRF cookie, the very next request that changes something fails, and that is the bug.
  *
- * <p><b>Why this is a real test and not a mock.</b> The whole chain runs: the real filter chain, the
- * real session in PostgreSQL and the real CSRF filter of Spring Security. The cookies are the ones
- * the application really wrote.
+ * <p><b>Why this is a real test and not a mock.</b> The whole chain runs: the real filter chain,
+ * the real session in PostgreSQL and the real CSRF filter of Spring Security. The cookies are the
+ * ones the application really wrote.
  *
- * <p><b>Why the accounts are removed again.</b> The database is shared with the other suites, and one
- * of them asserts the exact number of accounts. The account of this test is therefore deleted again
- * after every test.
+ * <p><b>Why the accounts are removed again.</b> The database is shared with the other suites, and
+ * one of them asserts the exact number of accounts. The account of this test is therefore deleted
+ * again after every test.
  *
  * <p>OOP concepts demonstrated:
  *

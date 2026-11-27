@@ -518,7 +518,25 @@ public class CatalogController {
                         request.sellingPrice(),
                         VariantPriceHistory.SourceType.MANUAL,
                         null);
-        return catalogService.toVariant(updated, maySeeCost(context));
+        Map<String, Object> body = catalogService.toVariant(updated, maySeeCost(context));
+        // The warning about a price under the cost is only useful to a caller who may see the cost.
+        // For everybody else the fields are absent, not false, so the answer never hints at a cost
+        // the caller may not know.
+        if (maySeeCost(context)) {
+            BigDecimal cost = catalogService.currentCost(updated.getId());
+            boolean belowCost = cost != null && updated.getSellingPrice().compareTo(cost) < 0;
+            body.put("belowCost", belowCost);
+            if (belowCost) {
+                body.put(
+                        "belowCostWarning",
+                        "The selling price "
+                                + updated.getSellingPrice()
+                                + " is under the unit cost "
+                                + cost
+                                + ".");
+            }
+        }
+        return body;
     }
 
     /**

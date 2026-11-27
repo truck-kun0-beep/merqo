@@ -47,6 +47,9 @@ public class AppUser {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
+    @Column(name = "approval_pin_hash", length = 255)
+    private String approvalPinHash;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "account_type", nullable = false, length = 30)
     private AccountType accountType;
@@ -213,6 +216,26 @@ public class AppUser {
      */
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    /**
+     * The BCrypt hash of the manager approval PIN, or {@code null} if not set.
+     *
+     * <p>Never leaves the backend.
+     *
+     * @return the PIN hash
+     */
+    public String getApprovalPinHash() {
+        return approvalPinHash;
+    }
+
+    /**
+     * Sets the manager approval PIN hash.
+     *
+     * @param approvalPinHash the BCrypt PIN hash
+     */
+    public void setApprovalPinHash(String approvalPinHash) {
+        this.approvalPinHash = approvalPinHash;
     }
 
     /**

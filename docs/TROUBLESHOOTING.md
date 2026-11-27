@@ -122,9 +122,44 @@ cd frontend
 npm install
 ```
 
+### The backend tests fail on a second run (`AuthAndScopingIntegrationTest` / `LoginAndSessionIntegrationTest`)
+
+Integration tests run against the real `merqo_test` PostgreSQL database, and concurrency/POS tests create non-rolled-back users and failed login attempts. Before re-running the full backend suite after prior runs, recreate `merqo_test`:
+
+```powershell
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d postgres -c "DROP DATABASE IF EXISTS merqo_test WITH (FORCE);"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d postgres -c "CREATE DATABASE merqo_test;"
+```
+
 ---
 
-## 3. Deployment
+## 3. POS errors and behaviours
+
+### `409 POS_SESSION_REQUIRED` when completing a sale
+
+Every POS sale and every **cash** refund requires an `OPEN` cash session belonging to the signed-in cashier at that exact branch. Open a shift drawer first via **Open session** (`POST /api/v1/pos/sessions`). Note that in `DEMO_MODE=true`, only the demo `cashier` account starts with an open session at Dhanmondi.
+
+### `409 SESSION_ALREADY_OPEN` when opening a cash session
+
+A cashier can hold at most one `OPEN` cash session across all locations at any time (enforced in PostgreSQL by partial unique index `ux_cash_sessions_one_open_per_cashier`). Close the existing shift session (`POST /api/v1/pos/sessions/{id}/close`) before opening another drawer.
+
+### `422 DISCOUNT_LIMIT_EXCEEDED`, `422 APPROVAL_INVALID`, or `423 APPROVAL_LOCKED`
+
+- Manual discounts above the cashier's `max_discount_percent` require an unused, non-expired (5-minute) token from `POST /api/v1/pos/approvals` issued for that same cashier and branch.
+- Five wrong PIN entries within 15 minutes lock approval attempts for that approver for 15 minutes (`APPROVAL_LOCKED`). In `DEMO_MODE=true`, `owner`, `manager-dm`, and `manager-ut` all have demo PIN `1234`.
+- Fixed manual line discounts greater than or equal to the post-promotion unit price are rejected even with a manager token (`INVALID_DISCOUNT`).
+
+### `409 DUPLICATE_REFERENCE` on bKash or Nagad checkout
+
+`ux_sale_payments_trx_id` enforces global uniqueness of `(method, reference)` across all branches and time for `BKASH` and `NAGAD`. Transaction IDs are normalized to uppercase (`^[A-Z0-9]{6,20}$`); use a new TrxID for each payment.
+
+### `422 CARD_NUMBER_REJECTED` on card payment reference
+
+Never enter a 13-to-19 digit PAN or Luhn-valid card number in `payment.reference`. Enter only the last 4 digits or gateway approval code.
+
+---
+
+## 4. Deployment
 
 ### The first thing to run when the site does not work
 
@@ -231,7 +266,7 @@ different free host for the backend. Both are documented in
 
 ---
 
-## 4. The browser
+## 5. The browser
 
 ### Login does not work in Firefox or Safari but works in Chrome
 
@@ -253,9 +288,38 @@ is blocked by browsers that block third party cookies.
 The browser cached the old `index.html`. Hard reload with `Ctrl+Shift+R`, or
 open a private window.
 
+### The sign out leaves the signed in shell on the screen
+
+The user stays on the signed in shell and is sent to the login page at the
+same time. The browser does not clear the session, so the shell keeps the
+user of its cache.
+
+Check the two things that make the sign out work:
+
+1. the answer of the sign in carries the `XSRF-TOKEN` cookie, so the browser
+   has a token that belongs to the session it is in. Without it every request
+   that changes something is refused with a 403, and the sign out is one of
+   them.
+2. the two `Set-Cookie` headers of the answer of the sign in stay two
+   headers. A proxy that joins them into one leaves the browser with one
+   cookie only.
+
+`scripts\check-live.ps1` checks both and says which one failed.
+
+To walk the same path on your own machine, start the backend and the dev
+server and run the local script:
+
+```powershell
+tools\local-signout-check.ps1 -BaseUrl http://localhost:5173
+```
+
+It prints the status of every step and the names of the cookies of every
+answer, never a cookie value. The sign out has to answer 204 and the answer
+of "who am I?" after it has to answer 401.
+
 ---
 
-## 5. Getting help
+## 6. Getting help
 
 When reporting a problem, include:
 

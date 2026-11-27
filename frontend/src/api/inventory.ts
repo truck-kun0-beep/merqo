@@ -254,4 +254,3 @@ export function applyStockCount(id: string): Promise<StockCountRow> {
 export function cancelStockCount(id: string): Promise<StockCountRow> {
   return apiRequest<StockCountRow>(`/inventory/counts/${id}/cancel`, { method: 'POST' })
 }
-

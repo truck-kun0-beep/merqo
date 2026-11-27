@@ -90,3 +90,9 @@ Tracks every required unit, integration, hardening, concurrency, invariant, audi
 | Stock invariant across sales, returns & inspection resolutions with exact formula | `PosHardeningIntegrationTest.stockMovementAndBalanceInvariant` | covered |
 | Demo data contributor idempotent & `DEMO_MODE=false` seeds nothing | `DemoPosIntegrationTest.demoPosSeedingIsIdempotent`, `DemoModeOffIntegrationTest` | covered |
 | Phase 1 & 2 suites pass; every new Phase 3 endpoint covered by default deny (`401` unauthenticated) | `PublicEndpointPolicyTest`, `PosGroup6SessionAuditDenyIntegrationTest.repositoriesAndDefaultDeny` | covered |
+
+## Summary
+
+- Every requirement row in this map is **covered** (`0` missing).
+- Final `scripts\run-tests.bat` run from clean `merqo_test`: **405 backend tests run (0 failures, 0 errors, 0 skipped)**, **Spotless clean across 288 Java files**, **74 frontend Vitest tests passed**, and **ESLint exited 0**.
+

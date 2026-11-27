@@ -1,6 +1,7 @@
 package com.merqo.promotion;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,6 +35,8 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
      * @return the promotions
      */
     List<Promotion> findByDemoKeyNotNull();
+
+    Optional<Promotion> findByDemoKey(String demoKey);
 
     /**
      * The promotions that cover a variant.

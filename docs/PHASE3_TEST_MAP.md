@@ -59,12 +59,12 @@ Tracks every required unit, integration, hardening, concurrency, invariant, audi
 
 | Requirement | Test class and method | Status |
 | --- | --- | --- |
-| Dhanmondi cashier cannot sell at Mirpur or Uttara (`404`) | `SaleHistoryAndScopeIntegrationTest` (`mpId`); explicit `utId` | missing |
-| Dhanmondi cashier cannot read another cashier's sale (`404`) | `SaleHistoryAndScopeIntegrationTest.historyLookupScopeAndTampering` | covered |
-| Dhanmondi cashier cannot open another location's session (`404`) | `CashSessionIntegrationTest.scopeAndRoleRules` | covered |
-| `manager-dm` sees Dhanmondi and Mirpur sales, gets `404` for Uttara | `SaleHistoryAndScopeIntegrationTest.historyLookupScopeAndTampering` | covered |
-| Swapped sale IDs and tampered body `locationId`s rejected across endpoints | — | missing |
-| Cashier sale, receipt, history & lookup responses contain no cost keys (Jackson recursive check); manager sees where allowed | `PosHardeningIntegrationTest.costPrivacyAndAuditRows` | covered |
+| Dhanmondi cashier cannot sell at Mirpur or Uttara (`404`) | `SaleHistoryAndScopeIntegrationTest.historyLookupScopeAndTampering`, `PosGroup4ScopeIntegrationTest.scopeTamperingAndCostPrivacy` | covered |
+| Dhanmondi cashier cannot read another cashier's sale (`404`) | `SaleHistoryAndScopeIntegrationTest`, `PosGroup4ScopeIntegrationTest` | covered |
+| Dhanmondi cashier cannot open another location's session (`404`) | `CashSessionIntegrationTest.scopeAndRoleRules`, `PosGroup4ScopeIntegrationTest` | covered |
+| `manager-dm` sees Dhanmondi and Mirpur sales, gets `404` for Uttara | `SaleHistoryAndScopeIntegrationTest`, `PosGroup4ScopeIntegrationTest` | covered |
+| Swapped sale IDs and tampered body `locationId`s rejected across endpoints | `PosGroup4ScopeIntegrationTest.scopeTamperingAndCostPrivacy` | covered |
+| Cashier sale, receipt, history & lookup responses contain no cost keys (Jackson recursive check); manager sees where allowed | `PosHardeningIntegrationTest.costPrivacyAndAuditRows`, `PosGroup4ScopeIntegrationTest` | covered |
 
 ## 6. Integration Tests — Group 5: Returns & Reprints
 

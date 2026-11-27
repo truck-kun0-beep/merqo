@@ -74,7 +74,7 @@ Tracks every required unit, integration, hardening, concurrency, invariant, audi
 | Over-return gives `RETURN_QUANTITY_EXCEEDED`; fully returned gives `ALREADY_RETURNED` | `ReturnAndInspectionIntegrationTest.partialFullReturnErrorsAndCashImpact` | covered |
 | Return window expiry gives `RETURN_WINDOW_EXPIRED`; `POS_DISCOUNT_APPROVE` overrides | `ReturnAndInspectionIntegrationTest.returnWindowAndInspectionFlow` | covered |
 | Cash refund lowers expected cash; bKash refund does not | `ReturnAndInspectionIntegrationTest` (`partialFull...`, `returnWindow...`) | covered |
-| `RESTOCK` makes stock sellable; `INSPECTION` does not, appears in `/inventory/inspections`, resolve moves it | `ReturnAndInspectionIntegrationTest` | covered |
+| `RESTOCK` makes stock sellable; `INSPECTION` does not, appears in `/inventory/inspections`, resolve moves it | `ReturnAndInspectionIntegrationTest`, `PosGroup5ReturnsAndReprintsIntegrationTest.restockVsInspectionSellabilityAndResolution` | covered |
 | First print not logged; each reprint logged and marked `isDuplicate: true`; `reprintCount` accurate | `SaleIntegrationTest.happyPathReceiptAndReprint` | covered |
 | Reprint enforces `POS_REPRINT` (`403 FORBIDDEN` when absent/denied) | `SaleIntegrationTest.happyPathReceiptAndReprint` | covered |
 

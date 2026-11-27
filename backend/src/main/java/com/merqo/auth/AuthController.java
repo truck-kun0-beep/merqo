@@ -16,6 +16,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,6 +29,7 @@ import com.merqo.common.config.MerqoModeProperties;
 import com.merqo.common.config.MerqoSessionProperties;
 import com.merqo.common.error.NotFoundException;
 import com.merqo.common.web.CorrelationIdFilter;
+import com.merqo.pos.ApprovalService;
 import com.merqo.settings.SettingKey;
 import com.merqo.settings.SettingService;
 import com.merqo.user.AppUser;
@@ -62,6 +64,7 @@ public class AuthController {
     private final MerqoSessionProperties sessionProperties;
     private final OwnerBootstrapService ownerBootstrapService;
     private final SessionSecurityContextRepository sessionRepository;
+    private final ApprovalService approvalService;
 
     /**
      * Creates the controller.
@@ -83,7 +86,8 @@ public class AuthController {
             MerqoModeProperties modeProperties,
             MerqoSessionProperties sessionProperties,
             OwnerBootstrapService ownerBootstrapService,
-            SessionSecurityContextRepository sessionRepository) {
+            SessionSecurityContextRepository sessionRepository,
+            ApprovalService approvalService) {
         this.authService = authService;
         this.currentUserService = currentUserService;
         this.assignmentRepository = assignmentRepository;
@@ -92,6 +96,7 @@ public class AuthController {
         this.sessionProperties = sessionProperties;
         this.ownerBootstrapService = ownerBootstrapService;
         this.sessionRepository = sessionRepository;
+        this.approvalService = approvalService;
     }
 
     /**
@@ -188,6 +193,29 @@ public class AuthController {
                 user,
                 request.currentPassword(),
                 request.newPassword(),
+                AuditServiceSupport.clientIp(httpRequest),
+                correlationId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Sets or changes the approval PIN of an authorized discount approver.
+     *
+     * @param request the current password and new PIN
+     * @param httpRequest the current request
+     * @return an empty answer
+     */
+    @PutMapping("/auth/approval-pin")
+    @Operation(summary = "Set or update the manager approval PIN")
+    public ResponseEntity<Void> setApprovalPin(
+            @Valid @RequestBody SetApprovalPinRequest request, HttpServletRequest httpRequest) {
+        AppUser user = currentUserService.requireCurrentUser();
+        AccessContext context = currentUserService.requireAccessContext();
+        approvalService.setApprovalPin(
+                user,
+                context,
+                request.currentPassword(),
+                request.pin(),
                 AuditServiceSupport.clientIp(httpRequest),
                 correlationId());
         return ResponseEntity.noContent().build();
@@ -291,6 +319,14 @@ public class AuthController {
      */
     public record ChangePasswordRequest(
             @NotBlank String currentPassword, @NotBlank String newPassword) {}
+
+    /**
+     * The body of an approval PIN update request.
+     *
+     * @param currentPassword the current login password
+     * @param pin the new 4 to 8 digit approval PIN
+     */
+    public record SetApprovalPinRequest(@NotBlank String currentPassword, @NotBlank String pin) {}
 
     /**
      * The body of a demo login request.

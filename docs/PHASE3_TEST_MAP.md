@@ -29,9 +29,9 @@ Tracks every required unit, integration, hardening, concurrency, invariant, audi
 | `POS`-scope promotion applies; `ONLINE`-only promotion does not | `SaleIntegrationTest.serverPricingPromotionsAndNoPartialSale` | covered |
 | Warehouse staff cannot sell (`403 FORBIDDEN`) | `SaleHistoryAndScopeIntegrationTest.historyLookupScopeAndTampering` | covered |
 | Sale with no open cash session returns `409 POS_SESSION_REQUIRED` | `SaleIntegrationTest.happyPathReceiptAndReprint` | covered |
-| Same idempotency key twice gives one sale and one set of movements | `SaleIntegrationTest.discountsPaymentsAndIdempotency` (movement count verified too) | covered |
-| Changed body with same idempotency key gives `409 IDEMPOTENCY_CONFLICT` | `SaleIntegrationTest.discountsPaymentsAndIdempotency` | covered |
-| Empty cart (`lines: []`) on `POST /api/v1/pos/sales` returns `422 EMPTY_CART` | — | missing |
+| Same idempotency key twice gives one sale and one set of movements | `SaleIntegrationTest.discountsPaymentsAndIdempotency`, `PosGroup1SalesIntegrationTest.idempotentReplayWritesSingleSaleAndSingleMovement` | covered |
+| Changed body with same idempotency key gives `409 IDEMPOTENCY_CONFLICT` | `SaleIntegrationTest.discountsPaymentsAndIdempotency`, `PosGroup1SalesIntegrationTest.idempotentReplayWritesSingleSaleAndSingleMovement` | covered |
+| Empty cart (`lines: []`) on `POST /api/v1/pos/sales` returns `422 EMPTY_CART` | `PosGroup1SalesIntegrationTest.emptyCartReturnsEmptyCartError` | covered |
 
 ## 3. Integration Tests — Group 2: Payments
 

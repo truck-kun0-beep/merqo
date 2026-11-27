@@ -209,7 +209,21 @@ public class PromotionService {
      */
     @Transactional(readOnly = true)
     public Optional<Promotion> resolve(UUID variantId, Scope scope, UUID locationId) {
-        Instant now = Instant.now(clock);
+        return resolveAt(variantId, scope, locationId, Instant.now(clock));
+    }
+
+    /**
+     * Resolves the active promotion for a variant, channel, and location at an explicit instant.
+     *
+     * @param variantId the variant
+     * @param scope the channel
+     * @param locationId the location
+     * @param moment the evaluation timestamp
+     * @return the matching promotion, if any
+     */
+    @Transactional(readOnly = true)
+    public Optional<Promotion> resolveAt(
+            UUID variantId, Scope scope, UUID locationId, Instant moment) {
         List<com.merqo.catalog.domain.Promotion> candidates = new ArrayList<>();
         for (Promotion promotion : promotionRepository.findByVariantId(variantId)) {
             if (!coversLocation(promotion, locationId)) {
@@ -218,7 +232,7 @@ public class PromotionService {
             candidates.add(promotion.toDomain());
         }
         com.merqo.catalog.domain.Promotion chosen =
-                PromotionResolver.resolve(candidates, scope, locationId, now);
+                PromotionResolver.resolve(candidates, scope, locationId, moment);
         if (chosen == null) {
             return Optional.empty();
         }

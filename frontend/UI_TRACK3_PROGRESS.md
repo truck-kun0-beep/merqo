@@ -2,7 +2,7 @@
 
 Branch: `ui/pos-live` (branched from `ui/pos-screens` and merged cleanly with `main`).
 
-## Part 1: Make the Contract Exact (DONE — verifying build/tests)
+## Part 1: Make the Contract Exact (DONE — committed)
 
 ### Backend vs Frontend Contract Mismatches Fixed
 1. **Barcode Lookup (`posLookupBarcode`)**:
@@ -32,10 +32,11 @@ Branch: `ui/pos-live` (branched from `ui/pos-screens` and merged cleanly with `m
    - Removed `USE_MOCK_PATHS` from `src/api/pos.ts`; mocks run ONLY when `import.meta.env.DEV && import.meta.env.VITE_POS_MOCKS === '1'` or when a test explicitly calls `installPosMocks()`.
    - Mapped all 17 error codes (`POS_SESSION_REQUIRED`, `SESSION_ALREADY_OPEN`, `SESSION_NOT_OPEN`, `DISCOUNT_LIMIT_EXCEEDED`, `APPROVAL_INVALID`, `PIN_POLICY`, `PIN_LOCKED`, `PAYMENT_REFERENCE_REQUIRED`, `PAYMENT_INSUFFICIENT`, `CARD_NUMBER_REJECTED`, `DUPLICATE_REFERENCE`, `IDEMPOTENCY_CONFLICT`, `EMPTY_CART`, `ALREADY_RETURNED`, `RETURN_QUANTITY_EXCEEDED`, `RETURN_WINDOW_EXPIRED`, `INSUFFICIENT_STOCK`) in `src/lib/posErrors.ts` wired into `readErrorDetails`.
 
-## Part 2: Missing Screens & Live POS Checks (PENDING)
-- `ApprovalPinPage` under user menu (`/approval-pin`, gated by `POS_DISCOUNT_APPROVE` or `OWNER`)
-- `InspectionsPage` (`/inventory/inspections`, gated by `INVENTORY_ADJUST`) + sidebar entry
-- Dedicated unit/integration tests for idempotency retry reuse, error code mappings, PIN policy/permissions, inspection resolve flow, and server EOD summary
+## Part 2: Missing Screens & Live POS Checks (DONE — verifying build/tests)
+- **Approval PIN setup (`/approval-pin`)**: `src/pages/ApprovalPinPage.tsx`, linked in `AppShell` user dropdown ONLY for `OWNER` or `POS_DISCOUNT_APPROVE`, calling `PUT /auth/approval-pin` with `currentPassword` and surfacing server `PIN_POLICY` error detail.
+- **Inspections (`/inventory/inspections`)**: `src/pages/InspectionsPage.tsx` + `Inventory -> Inspections` sidebar link, gated by `INVENTORY_ADJUST`, listing inspection items and resolving quantities via `RESTOCK` / `WRITE_OFF` with an explicit confirmation step (`ConfirmDialog`).
+- **Live POS Wiring**: `Idempotency-Key` sent on sales & returns and reused identically across network-failure retries; original receipt fetched from `GET /pos/sales/{id}/receipt` while reprint calls `POST /pos/sales/{id}/reprint` with `DUPLICATE`; approval PIN exchanges via `POST /pos/approvals` without manager name; EOD close reads expected figures from `GET /pos/sessions/{id}/summary` without browser math.
+- **Tests**: Added `src/pages/Track3Part2.test.tsx`.
 
-## Part 3: Overview Dashboard Layout & Final Bundle Scan (PENDING)
+## Part 3: Overview Dashboard Layout (PENDING)
 - `HomePage.tsx` four separate KPI cards, branch comparison table skeleton, Action Center skeleton, and cashier `"Today at my branch"` strip without fake numbers in production

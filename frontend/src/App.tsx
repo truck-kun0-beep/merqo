@@ -15,6 +15,8 @@ import CatalogImportPage from './pages/CatalogImportPage'
 import PromotionsPage from './pages/PromotionsPage'
 import InventoryPage from './pages/InventoryPage'
 import StockCountsPage from './pages/StockCountsPage'
+import InspectionsPage from './pages/InspectionsPage'
+import ApprovalPinPage from './pages/ApprovalPinPage'
 import TransfersPage from './pages/TransfersPage'
 import TransferDetailPage from './pages/TransferDetailPage'
 import PosPage from './pages/PosPage'
@@ -111,6 +113,14 @@ export default function App() {
           }
         />
         <Route
+          path="inventory/inspections"
+          element={
+            <RequireSession permission="INVENTORY_ADJUST">
+              <InspectionsPage />
+            </RequireSession>
+          }
+        />
+        <Route
           path="transfers"
           element={
             <RequireSession permission="TRANSFER_VIEW">
@@ -179,6 +189,14 @@ export default function App() {
           element={
             <RequireSession>
               <ChangePasswordPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="approval-pin"
+          element={
+            <RequireSession>
+              <ApprovalPinPage />
             </RequireSession>
           }
         />

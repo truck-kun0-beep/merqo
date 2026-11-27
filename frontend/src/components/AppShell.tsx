@@ -147,6 +147,11 @@ export default function AppShell() {
           label: 'Stock counts',
           visible: can('INVENTORY_VIEW') || can('STOCK_COUNT'),
         },
+        {
+          to: '/inventory/inspections',
+          label: 'Inspections',
+          visible: can('INVENTORY_ADJUST'),
+        },
       ],
     },
     {
@@ -304,6 +309,16 @@ export default function AppShell() {
                   >
                     Change password
                   </NavLink>
+                  {can('POS_DISCOUNT_APPROVE') || user.accountType === 'OWNER' ? (
+                    <NavLink
+                      to="/approval-pin"
+                      role="menuitem"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="block px-3.5 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Approval PIN
+                    </NavLink>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"

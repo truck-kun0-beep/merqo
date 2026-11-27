@@ -36,6 +36,11 @@ export function Modal({
   const descId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     if (!open) {
@@ -47,7 +52,7 @@ export function Modal({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.stopPropagation()
-        onClose()
+        onCloseRef.current()
       } else {
         trapFocusInContainer(event, panelRef.current)
       }
@@ -58,7 +63,7 @@ export function Modal({
       previousFocusRef.current?.focus?.()
       window.dispatchEvent(new CustomEvent('merqo:dialog-closed'))
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) {
     return null

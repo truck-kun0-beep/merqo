@@ -46,13 +46,13 @@ Tracks every required unit, integration, hardening, concurrency, invariant, audi
 
 | Requirement | Test class and method | Status |
 | --- | --- | --- |
-| Cashier within `max_discount_percent` limit passes via HTTP without token | — | missing |
-| Discount above limit without token gives `422 DISCOUNT_LIMIT_EXCEEDED` | `SaleIntegrationTest.discountsPaymentsAndIdempotency` | covered |
+| Cashier within `max_discount_percent` limit passes via HTTP without token | `PosGroup3DiscountsIntegrationTest.discountLimitsPermissionsAndTokenIsolation` | covered |
+| Discount above limit without token gives `422 DISCOUNT_LIMIT_EXCEEDED` | `SaleIntegrationTest.discountsPaymentsAndIdempotency`, `PosGroup3DiscountsIntegrationTest` | covered |
 | Valid token passes, and reused token fails (`422 APPROVAL_INVALID`) | `SaleIntegrationTest.discountsPaymentsAndIdempotency` | covered |
 | Expired token fails using fixed `Clock` | `ApprovalIntegrationTest.approvalTokenLifecycleAndLockout` | covered |
-| Token issued for another cashier or another location fails on `POST /pos/sales` HTTP | `ApprovalIntegrationTest` (service only); HTTP checkout check | missing |
-| Cashier without `POS_DISCOUNT` cannot discount at all (`403 FORBIDDEN`) via HTTP | — | missing |
-| Fixed manual discount `>=` post-promotion line price rejected via HTTP | — | missing |
+| Token issued for another cashier or another location fails on `POST /pos/sales` HTTP | `ApprovalIntegrationTest`, `PosGroup3DiscountsIntegrationTest.discountLimitsPermissionsAndTokenIsolation` | covered |
+| Cashier without `POS_DISCOUNT` cannot discount at all (`403 FORBIDDEN`) via HTTP | `PosGroup3DiscountsIntegrationTest.discountLimitsPermissionsAndTokenIsolation` | covered |
+| Fixed manual discount `>=` post-promotion line price rejected via HTTP | `PosGroup3DiscountsIntegrationTest.discountLimitsPermissionsAndTokenIsolation` | covered |
 | Wrong PIN gives generic message + audit; 6th attempt is `423 PIN_LOCKED` | `ApprovalIntegrationTest.approvalTokenLifecycleAndLockout` | covered |
 
 ## 5. Integration Tests — Group 4: Scope, Tampering & Cost Privacy

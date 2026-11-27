@@ -32,11 +32,12 @@ Branch: `ui/pos-live` (branched from `ui/pos-screens` and merged cleanly with `m
    - Removed `USE_MOCK_PATHS` from `src/api/pos.ts`; mocks run ONLY when `import.meta.env.DEV && import.meta.env.VITE_POS_MOCKS === '1'` or when a test explicitly calls `installPosMocks()`.
    - Mapped all 17 error codes (`POS_SESSION_REQUIRED`, `SESSION_ALREADY_OPEN`, `SESSION_NOT_OPEN`, `DISCOUNT_LIMIT_EXCEEDED`, `APPROVAL_INVALID`, `PIN_POLICY`, `PIN_LOCKED`, `PAYMENT_REFERENCE_REQUIRED`, `PAYMENT_INSUFFICIENT`, `CARD_NUMBER_REJECTED`, `DUPLICATE_REFERENCE`, `IDEMPOTENCY_CONFLICT`, `EMPTY_CART`, `ALREADY_RETURNED`, `RETURN_QUANTITY_EXCEEDED`, `RETURN_WINDOW_EXPIRED`, `INSUFFICIENT_STOCK`) in `src/lib/posErrors.ts` wired into `readErrorDetails`.
 
-## Part 2: Missing Screens & Live POS Checks (DONE — verifying build/tests)
+## Part 2: Missing Screens & Live POS Checks (DONE — committed)
 - **Approval PIN setup (`/approval-pin`)**: `src/pages/ApprovalPinPage.tsx`, linked in `AppShell` user dropdown ONLY for `OWNER` or `POS_DISCOUNT_APPROVE`, calling `PUT /auth/approval-pin` with `currentPassword` and surfacing server `PIN_POLICY` error detail.
 - **Inspections (`/inventory/inspections`)**: `src/pages/InspectionsPage.tsx` + `Inventory -> Inspections` sidebar link, gated by `INVENTORY_ADJUST`, listing inspection items and resolving quantities via `RESTOCK` / `WRITE_OFF` with an explicit confirmation step (`ConfirmDialog`).
 - **Live POS Wiring**: `Idempotency-Key` sent on sales & returns and reused identically across network-failure retries; original receipt fetched from `GET /pos/sales/{id}/receipt` while reprint calls `POST /pos/sales/{id}/reprint` with `DUPLICATE`; approval PIN exchanges via `POST /pos/approvals` without manager name; EOD close reads expected figures from `GET /pos/sessions/{id}/summary` without browser math.
-- **Tests**: Added `src/pages/Track3Part2.test.tsx`.
+- **Tests**: Added `src/pages/Track3Part2.test.tsx`. Fixed `<Modal>` focus-preservation bug (`onCloseRef`) on keystroke updates.
 
-## Part 3: Overview Dashboard Layout (PENDING)
-- `HomePage.tsx` four separate KPI cards, branch comparison table skeleton, Action Center skeleton, and cashier `"Today at my branch"` strip without fake numbers in production
+## Part 3: Overview Dashboard Layout (DONE — committed)
+- **Overview (`src/pages/HomePage.tsx`)**: Four separated financial KPI cards (`Sales`, `Gross profit`, `Operating profit`, `Cash received`), responsive branch comparison table empty-state skeleton, Action center list skeleton (`Low-stock alerts`, `Pending inspections`, `Overdue transfers`), and cashier `"Today at my branch"` strip showing live session status + last receipt from real APIs with zero fake numbers in production.
+- **Verification**: `eslint .`, `tsc -b --noEmit`, `vitest run` (18 files, 84 tests passing), `vite build`, and production bundle scan (`BUNDLE_SCAN_CLEAN`).

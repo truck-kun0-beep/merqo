@@ -20,7 +20,10 @@ Baseline: 353 backend tests passing, Flyway migrations V1–V5 applied.
   - Tests passing (4 tests): `PosHardeningIntegrationTest`.
 - [x] **Slice H** (`done`): Demo data (`DemoPosContributor` with `order = 40`, `PromotionRepository.findByDemoKey`, demo PIN `1234`, branch opening stock ensure, 2 POS promotions, 4 closed past sessions across DM/MP/UT + 1 open DM cashier session, 25 back-dated sales across 14 days and all 4 payment methods including approved overrides, 2 returns covering `RESTOCK` & `INSPECTION`, idempotent repeat runs, and `DEMO_MODE=false` guard).
   - Tests passing: `DemoPosIntegrationTest`, `DemoModeOffIntegrationTest` (7 tests) + full backend suite from clean `merqo_test` (`396` tests, `0` failures, `0` errors).
-- [ ] **Slice I** (`not started`): Docs and finish (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `POS_CONTRACT.md`, `frontend/src/api/pos.ts`, `SETUP.md`, `TROUBLESHOOTING.md`, Supabase check, full suite + Spotless, final commit).
+- [x] **Slice I** (`done`): Documentation, API contract, and final verification:
+  - Updated `docs/JAVA_GUIDE.md` (every Phase 3 class & test mapped to its responsibility and OOP concept, Phase 3 viva questions, and Mermaid `classDiagram`), `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS.md` (`A37`–`A42`), `docs/PERMISSIONS.md`, `docs/TROUBLESHOOTING.md`, `SETUP.md` ("Testing the POS without hardware": keyboard scan + PDF print preview), `frontend/POS_CONTRACT.md`, and `frontend/src/api/pos.ts`.
+  - Confirmed `V6__pos_sales_sessions_and_returns.sql` uses only Supabase-compatible PostgreSQL features (sequences, `TIMESTAMPTZ`, `NUMERIC(14,2)`, partial unique indexes, standard PL/pgSQL triggers without superuser extensions).
+  - Verified full suite: Frontend Vitest (`16` files, `74` passed), ESLint (`0` errors), Backend `spotless:check` (`281` files clean), Backend full test suite from clean `merqo_test` (`396` tests, `0` failures, `0` errors, `0` skipped).
 
-## NEXT STEP
-Implement Slice I: update `docs/JAVA_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS.md`, `docs/PERMISSIONS.md`, `frontend/POS_CONTRACT.md`, `frontend/src/api/pos.ts`, `SETUP.md`, and `docs/TROUBLESHOOTING.md`; verify `V6` uses only Supabase PostgreSQL features; run full backend + frontend tests & Spotless; commit Slice I cleanly.
+## Status
+Phase 3 complete on branch `main`.

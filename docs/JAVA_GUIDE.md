@@ -314,6 +314,62 @@ Spring in them, and they are unit tested with `new` and no context.
 
 ---
 
+## 7a. The Phase 3 classes (`com.merqo.pos`, `com.merqo.pos.domain`, `Inspection`, `DemoPosContributor`)
+
+Every class added in Phase 3 is mapped below to its single responsibility and the OOP concept it demonstrates (also documented in each class's Javadoc).
+
+### 7a.1 The POS domain (`com.merqo.pos.domain` — framework-free pure Java)
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `PosRuleException` | Carry HTTP status and stable `ErrorCodes` string for domain rule violations inside `com.merqo.pos.domain`. | **Custom Runtime Exception & Encapsulation**: keeps pure Java domain free of Spring dependencies while preserving HTTP/error mapping in `GlobalExceptionHandler`. |
+| `PaymentMethod` | Closed enum of allowed POS payment instruments (`CASH`, `BKASH`, `NAGAD`, `CARD`) and their validation needs. | **Enums with Behaviour**: eliminates raw-string switching and centralizes reference/TrxID rules. |
+| `PaymentRules` | Validate single-method tender, `BKASH`/`NAGAD` uppercase alphanumeric TrxIDs, and Luhn/13–19-digit card PAN rejection (`CARD_NUMBER_REJECTED`). | **Pure Function & Value Object** (`PaymentValidation`): deterministic checks with no database or Spring dependency. |
+| `DiscountAllocator` | Allocate whole-bill `PERCENT` or `FIXED` discounts across line subtotals using the largest-remainder method so parts sum exactly. | **Algorithm Strategy & Pure Function**: guarantees zero rounding drift between header and line discounts. |
+| `DiscountLimitPolicy` | Enforce fixed-discount ceiling (`<` post-promo price) and check whether combined manual discount percent stays within cashier limit or requires manager approval. | **Policy Pattern & Pure Function**: cleanly separates discount authorization math from persistence. |
+| `SaleCalculator` | Compute authoritative server-side line totals, promo discounts, manual discounts, bill discount allocation, inclusive/exclusive tax, and net totals. | **Static Factory / Domain Service & Composition**: composes `Money`, `PriceCalculator`, `TaxPolicy`, and `DiscountAllocator` into an immutable result. |
+| `SaleTotals` | Immutable value record holding computed header and line pricing breakdowns including `belowCost` flags. | **Immutable Value Object (Java Record)**: prevents post-calculation mutation of checkout totals. |
+| `ApprovalPinPolicy` | Validate 4–8 digit numeric approval PINs and compute sliding-window failure lockouts (5 wrong attempts in 15 min locks 15 min). | **Policy Object & Encapsulation**: mirrors `LoginThrottlePolicy` using pure `Instant` comparisons. |
+| `ApprovalTokenRules` | Generate 128-bit random URL-safe tokens, SHA-256 hex digests, and validate matching cashier, location, discount ceiling, unused state, and expiry. | **Single Responsibility & Pure Function**: isolates cryptographic hashing and claim checks from JPA entities. |
+| `CashSessionReconciler` | Aggregate expected `CASH`, `BKASH`, `NAGAD`, `CARD` totals (opening cash + sales - cash refunds) and verify mandatory variance notes. | **Domain Service & Immutable Records** (`ExpectedTotals`, `ReconciliationResult`). |
+| `ReturnRules` | Enforce return window days (unless manager override held), per-line remaining quantity bounds, and proportional refund with last-unit rounding remainder. | **Domain Service & Pure Function**: prevents `ALREADY_RETURNED` / `RETURN_QUANTITY_EXCEEDED` and paisa drift. |
+| `ReceiptNumber` | Format `MQ-<Dhaka year>-<6 digits>` (`CS-000001`, `RET-000001` helpers) and build display-safe text codes. | **Value Formatting Utility & Pure Function**: ties numbering directly to `BusinessTime.BUSINESS_ZONE`. |
+| `ReceiptData` | Immutable record capturing every non-cost receipt header/footer/payment/duplicate field matching the frontend `ReceiptData` contract. | **Immutable Value Object (Java Record)**: excludes cost/margin fields structurally. |
+| `ReceiptLineItem` | Immutable record holding one printed receipt line (`name`, `variant`, `quantity`, `unitPrice`, `discount`, `lineTotal`). | **Immutable Value Object (Java Record) & Composition**: element of `ReceiptData`. |
+| `ReceiptRenderer<T>` | Parameterized strategy interface `render(ReceiptData)` decoupling receipt assembly from output format. | **Generic Strategy Interface & Polymorphism**. |
+| `JsonReceiptRenderer` | Implement `ReceiptRenderer<Map<String, Object>>` producing the 2-decimal string map for JSON HTTP responses. | **Strategy Implementation / Adapter**. |
+| `PlainTextReceiptRenderer` | Implement `ReceiptRenderer<String>` formatting an 80mm plain-text thermal/PDF preview receipt with optional `DUPLICATE RECEIPT` banner. | **Strategy Implementation / Adapter**. |
+
+### 7a.2 POS entities, repositories, services & controllers (`com.merqo.pos`, `com.merqo.inventory`, `com.merqo.demo`)
+
+| Class | Responsibility in one line | The OOP concept it shows |
+| --- | --- | --- |
+| `CashSessionStatus`, `CashSession`, `CashSessionRepository` | Persist shift drawer sessions (`OPEN`/`CLOSED`), expected/counted/difference amounts, and lock/query open cashier sessions. | **Entity Mapping & Pessimistic Locking** (`findByIdForUpdate`). |
+| `PinAttempt`, `PinAttemptRepository`, `PinAttemptRecorder` | Persist approval PIN successes/failures; `PinAttemptRecorder` runs in `REQUIRES_NEW` so failed attempts survive outer request rollbacks. | **Transaction Boundary Strategy & Separation of Concerns**. |
+| `ApprovalToken`, `ApprovalTokenRepository` | Store SHA-256 token hashes with `usedAt` and pessimistically lock (`findByTokenHashForUpdate`) for single-use consumption. | **Entity Mapping & Pessimistic Concurrency Control**. |
+| `Sale`, `SaleLine`, `SalePayment`, `ReceiptReprint` + repositories | Map the append-only sale header, line snapshots (`unit_cost_snapshot`, discounts, tax), single payment (unique `ux_sale_payments_trx_id`), and reprint audit log. | **Composition & Interface-as-Guard** (repositories omit mutation/delete methods matching DB triggers). |
+| `ReturnReason`, `ReturnDisposition`, `SaleReturn`, `SaleReturnLine` + repositories | Map append-only returns, dispositions (`RESTOCK`, `INSPECTION`), idempotency hash, and returned line quantities. | **Closed Enums & Append-Only Entity Mapping**. |
+| `CashSessionService`, `CashSessionController` | Open/current/summary/close shift sessions, enforce `SESSION_ALREADY_OPEN` & variance notes, audit close variance, and expose `/api/v1/pos/sessions`. | **Service Transaction Script & Thin Controller**. |
+| `ApprovalService`, `ApprovalController` | Handle `PUT /auth/approval-pin` and `POST /pos/approvals`, PIN throttling, token issuance/consumption, and audit logging. | **Delegation, Fail Fast & Thin Controller**. |
+| `SaleService`, `SaleController` | Orchestrate idempotent checkout (`SELECT` + unique constraint + `requestHash`), server-side `SaleCalculator` pricing, token consumption, `InventoryService.remove`, receipt rendering, history filtering, and reprint logging. | **Facade, Orchestration & Cost Privacy Filtering**. |
+| `ReturnService`, `ReturnController` | Process partial/full returns against locked `Sale` rows (`findByIdForUpdate`), refund original method, lower open session cash on `CASH` refunds, route `RESTOCK` vs `INSPECTION` stock, and audit. | **Pessimistic Row Locking & Idempotent Service Design**. |
+| `InspectionService`, `InspectionController` | List quarantined `in_inspection` balances inside caller scope and resolve units via `InventoryService.resolveInspection` (`RESTOCK` or flagged `WRITE_OFF`). | **Delegation & Scope Isolation**. |
+| `DemoPosContributor` | Seed demo PIN `1234`, branch opening stock, 2 POS promos, 4 closed + 1 open cash sessions, 25 back-dated sales across 14 days & 4 methods, and 2 returns when `DEMO_MODE=true`. | **Strategy (`DemoDataContributor`) & Idempotent Seeder**. |
+
+### 7a.3 Phase 3 tests
+
+| Test | What it proves |
+| --- | --- |
+| `PaymentRulesTest`, `SalePricingAndDiscountDomainTest`, `ApprovalAndSessionDomainTest`, `ReturnAndReceiptDomainTest` | Every pure Java domain rule (payment TrxIDs/Luhn card rejection, largest-remainder bill allocation, tax/below-cost math, PIN lockout windows, token rules, cash reconciliation, return remainder allocation, receipt rendering) without Spring. |
+| `CashSessionIntegrationTest` | Session lifecycle, variance-note enforcement, DB trigger rejecting edits to `CLOSED` sessions, and 2-thread race producing 1 winner + 1 `SESSION_ALREADY_OPEN`. |
+| `ApprovalIntegrationTest`, `SecretsNeverLeakIntegrationTest` | `PUT /auth/approval-pin`, expired/reused/wrong-location tokens, 5-attempt lockout, and verifying PIN/token hashes never leak in API or audit rows. |
+| `SaleIntegrationTest`, `SaleHistoryAndScopeIntegrationTest` | Server price-tamper rejection, POS promotions, global duplicate TrxID, Luhn card rejection, idempotency replay vs 409 conflict, duplicate reprint banner/log, Dhaka-day filters, single-cashier isolation, and cross-branch 404. |
+| `ReturnAndInspectionIntegrationTest` | Partial/full return totals with rounding remainder, expired return window + `POS_DISCOUNT_APPROVE` override, `ALREADY_RETURNED` / `RETURN_QUANTITY_EXCEEDED`, `CASH` refund lowering `expectedCash`, and `RESTOCK` / `WRITE_OFF` inspection resolution. |
+| `PosHardeningIntegrationTest` | DB append-only trigger rejection across all 6 tables, Jackson recursive cost-privacy assertions, audit log verification for all POS actions, 4 concurrency races (last stock unit, idempotent submit, last returnable unit, duplicate TrxID), and `SUM(quantity_delta) == on_hand` invariant. |
+| `DemoPosIntegrationTest`, `DemoModeOffIntegrationTest` | Idempotent seeding of 25 demo sales, 5 sessions, 2 returns, demo PIN `1234`, and zero POS rows seeded when `DEMO_MODE=false`. |
+
+---
+
 ## 8. Likely viva questions and their answers
 
 **Q: Why `BigDecimal` and not `double` for money?**
@@ -606,6 +662,21 @@ price of 33.335 with a ten percent discount gives a unit price of 30.00 after
 the rounding, and three of them cost 90.00 and not 90.01. The same rule that
 `Money` already follows is used, so there is only one rounding decision in the
 whole system, and `PriceCalculatorTest.roundsTheUnitPriceFirst` proves it.
+
+**Q: Why does manager discount override use a single-use SHA-256 token instead of sending the manager's PIN inside `POST /pos/sales`?**
+A: Because PIN verification and checkout idempotency are separate concerns. `POST /pos/approvals` verifies the approver's BCrypt PIN (logging attempts in a `REQUIRES_NEW` transaction so failures count even on rollback), mints a 128-bit token with a 5-minute TTL bound to that cashier and branch, and stores only its SHA-256 hash. Inside `POST /pos/sales`, `ApprovalTokenRepository.findByTokenHashForUpdate` locks and marks `usedAt` atomically so two concurrent sales cannot replay one override.
+
+**Q: How does `DiscountAllocator` prevent rounding drift on whole-bill discounts?**
+A: `DiscountAllocator.allocateLargestRemainder` calculates exact floor cents per line proportional to each line's pre-bill subtotal and distributes the leftover `1`-paisa remainders in descending order of fractional remainder (`lineIndex` tie-break). Therefore `SUM(line.billDiscountAllocated) == header.billDiscount` holds to the exact cent on every sale.
+
+**Q: Why is `merqo_protect_cash_session()` different from `merqo_reject_append_only_mutation()`?**
+A: `sales`, `sale_lines`, `sale_payments`, `sale_returns`, `sale_return_lines`, and `receipt_reprints` are write-once forever, so `merqo_reject_append_only_mutation()` blocks every `UPDATE` and `DELETE`. A `CashSession`, however, starts `OPEN` and transitions once to `CLOSED` with server-computed expected totals, after which `merqo_protect_cash_session()` makes the closed row permanently immutable.
+
+**Q: How does Merqo enforce both cashier-level and location-level POS history privacy?**
+A: `SaleService.listSales` and `SaleService.loadSaleInScope` check `context.visibleLocationIds(...)` first (returning `404` for unassigned branches) and then check whether the caller holds `DISCOUNT_MANAGE`, `DASHBOARD_VIEW`, `FINANCE_REPORT_VIEW`, or `AUDIT_VIEW` at that branch. A standard cashier only sees their own sales (`cashierId = context.getUserId()`), and every cost/margin key (`unitCost`, `belowCost`, `belowCostWarnings`) is omitted whenever `COST_VIEW` is absent.
+
+**Q: How do you guarantee a full return refunds the exact amount paid when unit prices had discounts or bill allocations?**
+A: `ReturnRules.lineRefundAmount` computes cumulative proportional refunds from `alreadyReturned` to `alreadyReturned + qtyToReturn`, giving any rounding remainder to the very last unit (`returned == sold`), so partial returns never over-refund and a complete return equals `lineTotal` to the exact paisa.
 
 ---
 
@@ -939,6 +1010,79 @@ TransferController ──► TransferService ──► StockTransferRepository
 rule about the data, not about HTTP. Keeping it in its own plain Java class
 means it is read in one look, printed in this file, and unit tested without a
 database.
+
+### 9.9 The Phase 3 POS module
+
+```mermaid
+classDiagram
+    class CashSessionController
+    class ApprovalController
+    class SaleController
+    class ReturnController
+    class InspectionController
+
+    class CashSessionService
+    class ApprovalService
+    class SaleService
+    class ReturnService
+    class InspectionService
+
+    class SaleCalculator
+    class DiscountAllocator
+    class DiscountLimitPolicy
+    class PaymentRules
+    class CashSessionReconciler
+    class ReturnRules
+    class ApprovalPinPolicy
+    class ApprovalTokenRules
+    class ReceiptRenderer~T~ {
+        <<interface>>
+        +render(ReceiptData) T
+    }
+    class JsonReceiptRenderer
+    class PlainTextReceiptRenderer
+
+    class PromotionService
+    class InventoryService {
+        <<interface>>
+    }
+    class AuditService
+
+    CashSessionController --> CashSessionService
+    ApprovalController --> ApprovalService
+    SaleController --> SaleService
+    ReturnController --> ReturnService
+    InspectionController --> InspectionService
+
+    CashSessionService --> CashSessionReconciler
+    CashSessionService --> AuditService
+    ApprovalService --> ApprovalPinPolicy
+    ApprovalService --> ApprovalTokenRules
+    ApprovalService --> AuditService
+
+    SaleService --> SaleCalculator
+    SaleService --> DiscountLimitPolicy
+    SaleService --> PaymentRules
+    SaleService --> JsonReceiptRenderer
+    SaleService --> ApprovalService
+    SaleService --> CashSessionService
+    SaleService --> PromotionService
+    SaleService --> InventoryService
+    SaleService --> AuditService
+
+    SaleCalculator --> DiscountAllocator
+
+    ReturnService --> ReturnRules
+    ReturnService --> CashSessionService
+    ReturnService --> InventoryService
+    ReturnService --> AuditService
+
+    InspectionService --> InventoryService
+    InspectionService --> AuditService
+
+    ReceiptRenderer <|.. JsonReceiptRenderer
+    ReceiptRenderer <|.. PlainTextReceiptRenderer
+```
 
 ---
 

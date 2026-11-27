@@ -570,3 +570,51 @@ script that walks the sign out through the local proxy. That script builds its
 strict jar from the `Set-Cookie` headers of the sign in answer and not from the
 jar of the session, so it proves the same thing the browser proves. The two
 scripts now report the same thing about the same deployment.
+
+---
+
+## A37 - Single-use SHA-256 approval tokens and dedicated PIN throttle
+
+**Decision:** manager discount overrides use `POST /api/v1/pos/approvals` to mint a 128-bit random URL-safe token (stored only as its SHA-256 hex digest in `approval_tokens`, valid for 5 minutes) instead of accepting the manager's raw PIN on `POST /api/v1/pos/sales`. Failed PIN checks are persisted via `PinAttemptRecorder` in a `REQUIRES_NEW` transaction so failures survive request rollback.
+
+**Reason:** passing a raw manager PIN inside `POST /pos/sales` mixes credential verification and throttling with checkout idempotency and retries. Single-use tokens bound to `(cashier, location, maxDiscountPercent)` are consumed atomically inside the sale transaction (`SELECT ... FOR UPDATE`), so concurrent checkouts cannot replay one token.
+
+---
+
+## A38 - Cash session response wrapping & backward-compatible input aliases
+
+**Decision:** `GET /api/v1/pos/sessions/current` returns `{ "session": CashSessionSummary | null }` to match the Phase 2 frontend TypeScript contract, while `/pos/sessions`, `/pos/sales`, `/pos/sales/lookup`, and `/pos/sales/{id}/returns` follow the Phase 3 `/api/v1/pos/**` routes. `SaleController` also accepts legacy Phase 2 field aliases (`amountGiven`, `trxId`, `cardReference`, `manualDiscount`) alongside `tendered`, `reference`, and flat discount fields.
+
+**Reason:** keeps existing frontend components aligned with live endpoints without breaking Phase 2 frontend contract shapes while removing client-trusted pricing fields.
+
+---
+
+## A39 - Largest-remainder whole-bill discount & last-unit return allocation
+
+**Decision:** whole-bill discounts (`PERCENT` or `FIXED` allocated across lines by `DiscountAllocator`) distribute rounding cents using the largest-remainder method weighted by pre-bill line subtotal so allocated parts sum **exactly** to the bill discount. Similarly, `ReturnRules.lineRefundAmount` refunds proportional cents per returned unit and assigns any rounding remainder to the final returned unit so a full return equals `sale_line.line_total` to the exact paisa.
+
+**Reason:** rounding every line or returned unit independently creates penny drift between order totals and cash drawer reconciliation.
+
+---
+
+## A40 - Inspection intake keeps `SUM(stock_movements.quantity_delta) == on_hand`
+
+**Decision:** when a return line uses `disposition = INSPECTION`, `InventoryLedger.receiveToInspection` increases only `in_inspection` (leaving `on_hand` unchanged) and writes a `StockMovement` with `quantityDelta = 0` (`RETURN_INSPECTION`). Resolving inspection via `POST /api/v1/inventory/inspections/resolve` decreases `in_inspection` by `quantity`, increases `on_hand` by `accepted` (`quantity` for `RESTOCK`, `0` for `WRITE_OFF`), and records `quantityDelta = accepted`.
+
+**Reason:** `in_inspection` items are quarantined off the sellable shelf, and keeping `quantityDelta = accepted` ensures `SUM(stock_movements.quantity_delta) == inventory_balances.on_hand` always holds as an exact mathematical invariant (proven by `PosHardeningIntegrationTest`).
+
+---
+
+## A41 - Six append-only POS tables and immutable closed cash sessions
+
+**Decision:** `sales`, `sale_lines`, `sale_payments`, `sale_returns`, `sale_return_lines`, and `receipt_reprints` share the existing PostgreSQL trigger function `merqo_reject_append_only_mutation()`. `cash_sessions` uses a dedicated trigger `merqo_protect_cash_session()` so an `OPEN` session can be closed once and then becomes immutable (`CLOSED` rows cannot be updated, and no session row can be deleted).
+
+**Reason:** sales, payments, returns, and duplicate print logs are financial audit records ("a sale is final; corrections are returns"), while cash sessions transition cleanly `OPEN -> CLOSED` once and freeze forever.
+
+---
+
+## A42 - Explicit `Clock` / `Instant` and PIN bypass strictly gated by `DEMO_MODE=true`
+
+**Decision:** `SaleService.createSaleForDemo`, `ReturnService.createReturnForDemo`, `CashSessionService.openForDemo`/`closeForDemo`, and `ApprovalService.setApprovalPinForDemo` exist strictly for `DemoPosContributor` (`@ConditionalOnProperty(name = "merqo.demo-mode", havingValue = "true")`) to back-date 14 days of demo history and seed demo PIN `1234` without exposing timestamp overrides on any HTTP controller.
+
+**Reason:** public POS APIs must always stamp server `Clock` time and enforce PIN complexity/throttling, while realistic demo reports require multi-day sales history across branches.

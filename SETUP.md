@@ -262,7 +262,37 @@ The other Phase 2 values already existed:
 
 ---
 
-## 9. Useful URLs while developing
+## 9. Testing the POS without hardware
+
+Merqo POS requires no physical barcode scanner or thermal receipt printer during
+development or verification:
+
+1. **Scan by typing (`ScanInput`)**: sign in as the demo cashier
+   (`cashier`, Dhanmondi branch) where an open cash session is already seeded.
+   Focus the POS scan box, type a barcode (for example `890TE100BLK01` for
+   Classic Cotton Tee Black, `890TE100WHT01`, or `890HO200M01`), and press
+   `Enter`. Any USB HID barcode scanner works the same way because it acts as
+   a keyboard that types characters followed by `Enter`.
+2. **Server barcode lookup**: the live lookup hits
+   `GET /api/v1/catalog/lookup?barcode=...&scope=POS&locationId=...` to return
+   the active variant price, active POS promotion, effective tax, and branch
+   available stock.
+3. **Discount override without hardware**: enter a manual line or bill discount
+   above the cashier's `max_discount_percent` (`5%`), then enter the seeded
+   demo approval PIN `1234` in the manager override step to obtain a single-use
+   token from `POST /api/v1/pos/approvals` (or update your PIN via
+   `PUT /api/v1/auth/approval-pin`).
+4. **Print to PDF / thermal 80mm preview**: after checkout, click **Print
+   receipt** (or **Reprint** in Sales History). In Chromium / Edge / Firefox,
+   select **Save as PDF** as the print destination to verify the formatted 80mm
+   receipt layout (`businessName`, branch address/phone, `MQ-<year>-<6 digits>`
+   receipt number, item breakdown, payment reference, and `DUPLICATE RECEIPT`
+   watermark on reprints). Plain-text thermal formatting is also tested in
+   `PlainTextReceiptRenderer`.
+
+---
+
+## 10. Useful URLs while developing
 
 | URL | What it shows |
 | --- | --- |
@@ -275,7 +305,7 @@ The other Phase 2 values already existed:
 
 ---
 
-## 10. Common problems
+## 11. Common problems
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the full list. The
 three most common ones:
@@ -294,7 +324,7 @@ PostgreSQL is not running. Check `Get-Service postgresql*` and look at the
 
 ---
 
-## 11. Next step
+## 12. Next step
 
 Sign in on <http://localhost:5173>. With `DEMO_MODE=true` the login page
 shows the demo accounts; one click signs you in. The demo locations, the demo

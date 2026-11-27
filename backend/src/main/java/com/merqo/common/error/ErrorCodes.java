@@ -106,6 +106,54 @@ public final class ErrorCodes {
     /** The import file is not usable. */
     public static final String IMPORT_INVALID = "IMPORT_INVALID";
 
+    /** No open cash session exists for this cashier at this location. */
+    public static final String POS_SESSION_REQUIRED = "POS_SESSION_REQUIRED";
+
+    /** The cashier already has an open cash session. */
+    public static final String SESSION_ALREADY_OPEN = "SESSION_ALREADY_OPEN";
+
+    /** The cash session is not open. */
+    public static final String SESSION_NOT_OPEN = "SESSION_NOT_OPEN";
+
+    /** Manual discount exceeds the cashier's limit without valid manager approval. */
+    public static final String DISCOUNT_LIMIT_EXCEEDED = "DISCOUNT_LIMIT_EXCEEDED";
+
+    /** The manager approval PIN or approval token is invalid, expired, or already used. */
+    public static final String APPROVAL_INVALID = "APPROVAL_INVALID";
+
+    /** The approval PIN does not follow the PIN policy. */
+    public static final String PIN_POLICY = "PIN_POLICY";
+
+    /** Approval PIN attempts are temporarily locked after repeated failures. */
+    public static final String PIN_LOCKED = "PIN_LOCKED";
+
+    /** A payment reference is required for the chosen payment method. */
+    public static final String PAYMENT_REFERENCE_REQUIRED = "PAYMENT_REFERENCE_REQUIRED";
+
+    /** Cash tendered is less than the bill total. */
+    public static final String PAYMENT_INSUFFICIENT = "PAYMENT_INSUFFICIENT";
+
+    /** Full card numbers may never be submitted or stored. */
+    public static final String CARD_NUMBER_REJECTED = "CARD_NUMBER_REJECTED";
+
+    /** The mobile banking transaction reference has already been used. */
+    public static final String DUPLICATE_REFERENCE = "DUPLICATE_REFERENCE";
+
+    /** The idempotency key was reused with a different request payload. */
+    public static final String IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT";
+
+    /** A sale must contain at least one line item. */
+    public static final String EMPTY_CART = "EMPTY_CART";
+
+    /** No returnable quantity remains on the sale or selected lines. */
+    public static final String ALREADY_RETURNED = "ALREADY_RETURNED";
+
+    /** Requested return quantity exceeds the remaining returnable quantity. */
+    public static final String RETURN_QUANTITY_EXCEEDED = "RETURN_QUANTITY_EXCEEDED";
+
+    /** The sale is outside the return window and no override permission was granted. */
+    public static final String RETURN_WINDOW_EXPIRED = "RETURN_WINDOW_EXPIRED";
+
     /** Something unexpected happened. */
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 

@@ -48,7 +48,9 @@ public enum SettingKey {
     THRESHOLD_REFUSAL_RISK_COUNT("threshold.refusal_risk_count", ValueType.INTEGER, "2"),
     THRESHOLD_COD_GAP_DAYS("threshold.cod_gap_days", ValueType.INTEGER, "7"),
     THRESHOLD_UNUSUAL_ADJUSTMENT_VALUE(
-            "threshold.unusual_adjustment_value", ValueType.AMOUNT, "5000.00");
+            "threshold.unusual_adjustment_value", ValueType.AMOUNT, "5000.00"),
+
+    POS_RETURN_WINDOW_DAYS("pos.return_window_days", ValueType.INTEGER, "30");
 
     /** The paper widths a receipt printer may use, in millimetres. */
     public static final Set<Integer> ALLOWED_PAPER_WIDTHS = Set.of(58, 80);

@@ -203,5 +203,32 @@ public enum AuditAction {
     TRANSFER_CANCELLED,
 
     /** A catalog import was committed. */
-    CATALOG_IMPORTED
+    CATALOG_IMPORTED,
+
+    /** A POS sale was completed. */
+    POS_SALE_COMPLETED,
+
+    /** A manager approved an above-limit POS discount. */
+    POS_DISCOUNT_APPROVED,
+
+    /** A manager approval PIN attempt failed. */
+    POS_APPROVAL_FAILED,
+
+    /** A POS return was created. */
+    POS_RETURN_CREATED,
+
+    /** A receipt was reprinted as a duplicate. */
+    RECEIPT_REPRINTED,
+
+    /** A cash session was opened. */
+    CASH_SESSION_OPENED,
+
+    /** A cash session was closed. */
+    CASH_SESSION_CLOSED,
+
+    /** A user set or changed their approval PIN. */
+    APPROVAL_PIN_CHANGED,
+
+    /** Goods in inspection were resolved by restocking or writing off. */
+    INSPECTION_RESOLVED
 }

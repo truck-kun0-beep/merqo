@@ -1,10 +1,11 @@
 # Phase 3 Progress
 
-Baseline: 353 backend tests passing (`Tests run: 353, Failures: 0, Errors: 0, Skipped: 0`), Flyway migrations V1–V5 applied. No Phase 3 code exists yet.
+Baseline: 353 backend tests passing, Flyway migrations V1–V5 applied.
 
 ## Slices
 
-- [ ] **Slice A** (`not started`): Migration (`V6__pos_sales_sessions_and_returns.sql`) and pure Java domain classes (`PaymentMethod`, `PaymentRules`, `DiscountAllocator`, `DiscountLimitPolicy`, `SaleCalculator`/`SaleTotals`, `ApprovalPinPolicy`, `ApprovalTokenRules`, `CashSessionReconciler`, `ReturnRules`, `ReceiptNumber`, `ReceiptRenderer` + `JsonReceiptRenderer` + `PlainTextReceiptRenderer`) with unit tests.
+- [x] **Slice A** (`done`): Migration `V6__pos_sales_sessions_and_returns.sql` (sequences, `app_users.approval_pin_hash`, `pin_attempts`, `cash_sessions` + immutability trigger + one-OPEN-per-cashier index, `approval_tokens`, `sales`, `sale_lines`, `sale_payments` + global unique TrxID index, `sale_returns`, `sale_return_lines`, `receipt_reprints`, append-only triggers on 6 tables); `SettingKey.POS_RETURN_WINDOW_DAYS`; `ErrorCodes`; `AuditAction`; pure Java domain classes (`PosRuleException`, `PaymentMethod`, `PaymentRules`, `DiscountAllocator`, `DiscountLimitPolicy`, `SaleCalculator`, `SaleTotals`, `ApprovalPinPolicy`, `ApprovalTokenRules`, `CashSessionReconciler`, `ReturnRules`, `ReceiptNumber`, `ReceiptData`, `ReceiptLineItem`, `ReceiptRenderer`, `JsonReceiptRenderer`, `PlainTextReceiptRenderer`).
+  - Tests passing (44 tests): `PaymentRulesTest`, `SalePricingAndDiscountDomainTest`, `ApprovalAndSessionDomainTest`, `ReturnAndReceiptDomainTest`, `SettingKeyTest`, `SettingsIntegrationTest`.
 - [ ] **Slice B** (`not started`): Cash sessions (entities, repositories, service, controller, close immutability trigger, integration + concurrency tests).
 - [ ] **Slice C** (`not started`): Approval PIN and tokens (`PUT /auth/approval-pin`, `POST /pos/approvals`, 128-bit single-use token hash, 5-min expiry, throttling, audit, tests).
 - [ ] **Slice D** (`not started`): Sales, idempotency, receipts (`POST /pos/sales`, `GET /pos/sales/{id}/receipt`, `POST /pos/sales/{id}/reprint`, server pricing, stock removal, tests).
@@ -15,4 +16,4 @@ Baseline: 353 backend tests passing (`Tests run: 353, Failures: 0, Errors: 0, Sk
 - [ ] **Slice I** (`not started`): Docs and finish (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `POS_CONTRACT.md`, `SETUP.md`, `TROUBLESHOOTING.md`, Supabase check, full suite + Spotless, final commit).
 
 ## NEXT STEP
-Implement Slice A: Flyway `V6` migration, `SettingKey.POS_RETURN_WINDOW_DAYS`, `ErrorCodes`, `AuditAction`, and all pure Java domain classes + unit tests.
+Implement Slice B: Cash sessions (`CashSession` entity, `CashSessionRepository`, `CashSessionService`, `CashSessionController`, integration & concurrency tests).

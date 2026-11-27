@@ -37,10 +37,10 @@ Tracks every required unit, integration, hardening, concurrency, invariant, audi
 
 | Requirement | Test class and method | Status |
 | --- | --- | --- |
-| `BKASH` and `NAGAD` require TrxID (`422 PAYMENT_REFERENCE_REQUIRED`) | — | missing |
-| Same TrxID twice gives `409 DUPLICATE_REFERENCE` even across locations (`BKASH` & `NAGAD`) | `SaleIntegrationTest.discountsPaymentsAndIdempotency` (`BKASH`); `NAGAD` cross-branch | missing |
-| Card numbers (13, 16, 19 digits, spaces, dashes, Luhn) rejected via HTTP for EVERY method (`CASH`, `BKASH`, `NAGAD`, `CARD`) | — | missing |
-| Cash tendered below total refused (`422 PAYMENT_INSUFFICIENT`) via HTTP and change is accurate | `SaleIntegrationTest.happyPathReceiptAndReprint` (change only); insufficient cash HTTP | missing |
+| `BKASH` and `NAGAD` require TrxID (`422 PAYMENT_REFERENCE_REQUIRED`) | `PosGroup2PaymentsIntegrationTest.trxIdRequirementsDuplicatesAndCashTender` | covered |
+| Same TrxID twice gives `409 DUPLICATE_REFERENCE` even across locations (`BKASH` & `NAGAD`) | `SaleIntegrationTest.discountsPaymentsAndIdempotency`, `PosGroup2PaymentsIntegrationTest.trxIdRequirementsDuplicatesAndCashTender` | covered |
+| Card numbers (13, 16, 19 digits, spaces, dashes, Luhn) rejected via HTTP for EVERY method (`CASH`, `BKASH`, `NAGAD`, `CARD`) | `PosGroup2PaymentsIntegrationTest.rejectsCardNumbersAcrossAllMethodsViaHttp` | covered |
+| Cash tendered below total refused (`422 PAYMENT_INSUFFICIENT`) via HTTP and change is accurate | `SaleIntegrationTest.happyPathReceiptAndReprint`, `PosGroup2PaymentsIntegrationTest.trxIdRequirementsDuplicatesAndCashTender` | covered |
 
 ## 4. Integration Tests — Group 3: Discounts & Approvals
 

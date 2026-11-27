@@ -116,8 +116,11 @@ public class InventoryController {
             @RequestParam(required = false) Integer size) {
         AccessContext context = currentUserService.requireAccessContext();
         PageRequest request = PageRequest.of(page, size, "id", PageRequest.ASC);
+        // The order of the history is the one of the query: the creation moment and then the
+        // sequence number. A sort on the pageable would be appended to it, so the page is unsorted.
         Page<StockMovement> result =
-                stockService.listMovements(context, locationId, variantId, request.toSpring());
+                stockService.listMovements(
+                        context, locationId, variantId, request.toUnsortedSpring());
         List<Map<String, Object>> items = new ArrayList<>();
         result.forEach(movement -> items.add(toMovement(movement)));
         return PageResponse.of(

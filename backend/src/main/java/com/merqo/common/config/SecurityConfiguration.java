@@ -124,11 +124,12 @@ public class SecurityConfiguration {
                 .logout(logout -> logout.disable())
                 .anonymous(Customizer.withDefaults());
 
-        // The filter sits right behind the CSRF filter. It asks for the token value, which is what
-        // makes the browser receive the XSRF-TOKEN cookie before the first request that changes
-        // something.
+        // The filter sits right behind the CSRF filter. It asks for the token value and writes the
+        // XSRF-TOKEN cookie on every answer, so the browser always holds the token of the session
+        // it is in. Without it a sign in answered with the session cookie alone and every request
+        // that changed something was refused with a 403.
         http.addFilterAfter(
-                new com.merqo.common.web.CsrfTokenCookieFilter(),
+                new com.merqo.common.web.CsrfTokenCookieFilter(csrfTokenRepository),
                 org.springframework.security.web.csrf.CsrfFilter.class);
 
         // The password rule sits behind the authorization filter, so an anonymous caller is already

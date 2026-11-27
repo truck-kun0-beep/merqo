@@ -148,12 +148,40 @@ curl -s https://merqo-api.onrender.com/api/v1/health/ping
 
 ## Step 5 - Check that the site is up
 
+Run the check script. It does the whole check in one go: the frontend, the
+backend, the database, the proxy, demo mode and the demo login.
+
+```powershell
+scripts\check-live.bat
+```
+
+Every line has to say `[PASS]`. The last line has to say:
+
+```
+  Everything passed. The deployed site works and the demo login works.
+```
+
+If a line says `[FAIL]`, the line under it says what to do. The usual causes:
+
+| What the script says | What to do |
+| --- | --- |
+| the frontend host does not exist in DNS | the Pages project is not created yet, or it has another name. Pass the real URL: `scripts\check-live.bat https://<your-project>.pages.dev` |
+| the backend answered 404 | no Render service is bound to that name yet |
+| the proxy answered 503 | the backend is asleep. Wait a minute and run it again |
+| the Pages project has no API_BASE_URL | set `API_BASE_URL` in Cloudflare, then trigger a deploy |
+| demo mode is off | set `DEMO_MODE=true` in Render, then let Render restart |
+| the login was refused because the CSRF token was missing | hard reload the page with Ctrl+F5 and try again |
+
+Then do the same thing by hand in the browser, because the script cannot check
+what a browser does with the cookie:
+
 - [ ] Open `https://merqo.pages.dev` in a private window.
 - [ ] The page shows the Merqo header and a health panel with **UP**.
 - [ ] DevTools → **Network** → reload → the requests go to
       `merqo.pages.dev/api/...` and **not** to `merqo-api.onrender.com`.
 
-> Paste this output if stuck: the list of request URLs from the Network tab.
+> Paste this output if stuck: the whole output of `scripts\check-live.bat`, and
+> the list of request URLs from the Network tab.
 
 ---
 

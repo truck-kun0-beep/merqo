@@ -120,10 +120,7 @@ class CatalogIntegrationTest extends ScopeTestSupport {
                                 .content("{\"barcode\":\"" + alternate + "\"}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(
-                        get("/api/v1/catalog/lookup")
-                                .cookie(owner)
-                                .param("barcode", alternate))
+        mockMvc.perform(get("/api/v1/catalog/lookup").cookie(owner).param("barcode", alternate))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.variant.id").value(variantId))
                 .andExpect(jsonPath("$.variant.sku").isNotEmpty())
@@ -152,10 +149,7 @@ class CatalogIntegrationTest extends ScopeTestSupport {
         String variantId = createVariantWithBarcode(owner, barcode);
 
         // The variant is active and the lookup finds it.
-        mockMvc.perform(
-                        get("/api/v1/catalog/lookup")
-                                .cookie(owner)
-                                .param("barcode", barcode))
+        mockMvc.perform(get("/api/v1/catalog/lookup").cookie(owner).param("barcode", barcode))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.variant.id").value(variantId));
 
@@ -166,10 +160,7 @@ class CatalogIntegrationTest extends ScopeTestSupport {
                                 .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(
-                        get("/api/v1/catalog/lookup")
-                                .cookie(owner)
-                                .param("barcode", barcode))
+        mockMvc.perform(get("/api/v1/catalog/lookup").cookie(owner).param("barcode", barcode))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("BARCODE_NOT_FOUND"));
     }
@@ -253,13 +244,26 @@ class CatalogIntegrationTest extends ScopeTestSupport {
                 .andExpect(status().isOk());
 
         // The price preview flags the line as below cost.
-        mockMvc.perform(
-                        get("/api/v1/catalog/variants/{id}/price-preview", variantId)
-                                .cookie(owner)
-                                .param("quantity", "1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.belowCost").value(true))
-                .andExpect(jsonPath("$.cost").value("400.00"));
+        MvcResult preview =
+                mockMvc.perform(
+                                get("/api/v1/catalog/variants/{id}/price-preview", variantId)
+                                        .cookie(owner)
+                                        .param("quantity", "1"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.belowCost").value(true))
+                        .andReturn();
+
+        // The cost is money, so it is compared as a BigDecimal and not as a string: the scale of
+        // a number in JSON is not part of its value.
+        com.fasterxml.jackson.databind.JsonNode cost =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(preview.getResponse().getContentAsString())
+                        .get("cost");
+
+        assertEquals(
+                0,
+                new BigDecimal("400.00").compareTo(cost.decimalValue()),
+                "The preview must show the cost of four hundred");
     }
 
     @Test
@@ -278,7 +282,8 @@ class CatalogIntegrationTest extends ScopeTestSupport {
                 .andExpect(status().isOk());
 
         // The current price is on the variant itself.
-        ProductVariant variant = variantRepository.findById(UUID.fromString(variantId)).orElseThrow();
+        ProductVariant variant =
+                variantRepository.findById(UUID.fromString(variantId)).orElseThrow();
         assertEquals(
                 0,
                 new BigDecimal("888").compareTo(variant.getSellingPrice()),
@@ -307,7 +312,9 @@ class CatalogIntegrationTest extends ScopeTestSupport {
                                         .contentType(MediaType.APPLICATION_JSON)
                                         .content(
                                                 "{\"name\":\"Test category "
-                                                        + UUID.randomUUID().toString().substring(0, 8)
+                                                        + UUID.randomUUID()
+                                                                .toString()
+                                                                .substring(0, 8)
                                                         + "\"}"))
                         .andExpect(status().isCreated())
                         .andReturn();
@@ -363,12 +370,10 @@ class CatalogIntegrationTest extends ScopeTestSupport {
         Cookie cashier = signIn("cashier");
 
         // The manager may read the products.
-        mockMvc.perform(get("/api/v1/catalog/products").cookie(manager))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/catalog/products").cookie(manager)).andExpect(status().isOk());
 
         // The cashier may read them too, but may not create one.
-        mockMvc.perform(get("/api/v1/catalog/products").cookie(cashier))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/catalog/products").cookie(cashier)).andExpect(status().isOk());
 
         mockMvc.perform(
                         post("/api/v1/catalog/products")
@@ -398,7 +403,10 @@ class CatalogIntegrationTest extends ScopeTestSupport {
         String barcodeId = readPrimaryBarcodeId(variant);
 
         mockMvc.perform(
-                        delete("/api/v1/catalog/variants/{id}/barcodes/{barcodeId}", variantId, barcodeId)
+                        delete(
+                                        "/api/v1/catalog/variants/{id}/barcodes/{barcodeId}",
+                                        variantId,
+                                        barcodeId)
                                 .cookie(owner)
                                 .with(CsrfTestSupport.csrf()))
                 .andExpect(status().isConflict())

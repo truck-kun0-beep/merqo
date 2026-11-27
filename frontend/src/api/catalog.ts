@@ -1,4 +1,4 @@
-import { apiRequest, apiText } from './client'
+import { apiRequest, apiText, toQueryString } from './client'
 import type {
   BrandSummary,
   CategorySummary,
@@ -530,19 +530,3 @@ function toUploadBody(file: File): FormData {
   return form
 }
 
-/**
- * Builds a query string from the filters that are actually set.
- *
- * @param filters the filters
- * @returns the query string, with a leading question mark or empty
- */
-function toQueryString(filters: object): string {
-  const parts: string[] = []
-  for (const [key, value] of Object.entries(filters)) {
-    if (value === undefined || value === '') {
-      continue
-    }
-    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
-  }
-  return parts.length ? `?${parts.join('&')}` : ''
-}

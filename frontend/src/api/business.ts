@@ -1,4 +1,4 @@
-import { apiRequest } from './client'
+import { apiRequest, toQueryString } from './client'
 import type {
   AssignmentSummary,
   ExplainedPermission,
@@ -421,19 +421,3 @@ export function saveSettings(values: Record<string, string>): Promise<Record<str
   })
 }
 
-/**
- * Builds a query string from the filters that are actually set.
- *
- * @param filters the filters
- * @returns the query string, with a leading question mark or empty
- */
-function toQueryString(filters: Record<string, string | number | boolean | undefined>): string {
-  const parts: string[] = []
-  for (const [key, value] of Object.entries(filters)) {
-    if (value === undefined || value === '') {
-      continue
-    }
-    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
-  }
-  return parts.length ? `?${parts.join('&')}` : ''
-}

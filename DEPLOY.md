@@ -242,7 +242,17 @@ calls the URL above at least every ten minutes.
 
 ## Step 7 - Check the whole thing
 
-Open **https://merqo.pages.dev** in a private window.
+Run the check script. It checks the frontend, the backend, the database, the
+proxy, demo mode and the demo login, and it prints one `[PASS]` or `[FAIL]` line
+for each:
+
+```powershell
+scripts\check-live.bat
+```
+
+The last line has to say `Everything passed.`
+
+Then open **https://merqo.pages.dev** in a private window.
 
 You should see:
 
@@ -257,6 +267,9 @@ Then:
 3. Confirm the requests go to `merqo.pages.dev/api/v1/health` and not to
    `merqo-api.onrender.com`. That proves the browser sees one origin.
 4. Repeat the test in **Chrome**, **Edge**, **Firefox** and **Safari**.
+
+> The script signs in as the demo owner and ends there. It never writes
+> anything to the shop, so it is safe to run as often as you like.
 
 ### Optional: a custom domain
 

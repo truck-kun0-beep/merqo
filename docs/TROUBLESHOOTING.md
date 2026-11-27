@@ -126,6 +126,22 @@ npm install
 
 ## 3. Deployment
 
+### The first thing to run when the site does not work
+
+```powershell
+scripts\check-live.bat
+```
+
+The script checks the frontend, the backend, the database, the proxy, demo mode
+and the demo login, and it prints one `[PASS]` or `[FAIL]` line for each. The
+line under a `[FAIL]` says what to do. Start there instead of guessing.
+
+If the project was created under another name, pass the real URLs:
+
+```powershell
+scripts\check-live.bat https://<your-project>.pages.dev https://<your-api>.onrender.com
+```
+
 ### The Render build fails
 
 Open **Render → your service → Logs** and read the first error. The most

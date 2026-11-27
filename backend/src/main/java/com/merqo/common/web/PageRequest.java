@@ -103,6 +103,20 @@ public record PageRequest(int page, int size, String sort, String direction) {
     }
 
     /**
+     * The page as a Spring Data request, without a sort.
+     *
+     * <p>A query that carries its own {@code ORDER BY} must not get a sort on the pageable: Spring
+     * Data appends the sort of the pageable to the order of the query, and the order of the query
+     * is the one the caller of this method wanted. This is used by the movements list, whose order
+     * is the creation moment and then the sequence number of the row.
+     *
+     * @return the unsorted page request
+     */
+    public org.springframework.data.domain.PageRequest toUnsortedSpring() {
+        return org.springframework.data.domain.PageRequest.of(page, size);
+    }
+
+    /**
      * The page as a Spring Data request.
      *
      * @return the page request

@@ -469,11 +469,9 @@ every time, so there is nothing to keep in step.
 **Effect:** the same reasoning applies to the available stock of a balance:
 it is `onHand - reserved`, not a column of its own.
 
-
-
 ---
 
-A32 - A location may have more than one open stock count
+## A32 - A location may have more than one open stock count
 
 **Decision:** starting a stock count never looks at the counts that are already
 open. A location may have several counts in progress at the same time, and
@@ -491,7 +489,7 @@ sequence `count_number_sequence`, so every count still has its own number.
 
 ---
 
-A33 - The movement history has a stable order
+## A33 - The movement history has a stable order
 
 **Decision:** the movement history is ordered by the creation moment and then
 by the sequence number of the row. The sequence number is written by the

@@ -44,6 +44,12 @@ import com.merqo.orders.OrderIntakeService;
 import com.merqo.orders.OrderIntakeService.OrderIntakeOutcome;
 import com.merqo.orders.domain.OrderRuleException;
 import com.merqo.orders.domain.RequestSignature;
+import com.merqo.payments.MockProviderTransaction;
+import com.merqo.payments.MockProviderTransactionRepository;
+import com.merqo.payments.OrderPayment;
+import com.merqo.payments.OrderPaymentRepository;
+import com.merqo.payments.domain.CardNumberGuard;
+import com.merqo.payments.domain.OnlinePaymentMethod;
 import com.merqo.user.CurrentUserService;
 
 /**
@@ -68,6 +74,8 @@ public class DemoSimulatorController {
     private final ProductRepository productRepository;
     private final OnlinePricingService onlinePricingService;
     private final OrderIntakeService orderIntakeService;
+    private final MockProviderTransactionRepository mockProviderRepository;
+    private final OrderPaymentRepository orderPaymentRepository;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -81,6 +89,8 @@ public class DemoSimulatorController {
             ProductRepository productRepository,
             OnlinePricingService onlinePricingService,
             OrderIntakeService orderIntakeService,
+            MockProviderTransactionRepository mockProviderRepository,
+            OrderPaymentRepository orderPaymentRepository,
             ObjectMapper objectMapper,
             Clock clock) {
         this.modeProperties = modeProperties;
@@ -92,6 +102,8 @@ public class DemoSimulatorController {
         this.productRepository = productRepository;
         this.onlinePricingService = onlinePricingService;
         this.orderIntakeService = orderIntakeService;
+        this.mockProviderRepository = mockProviderRepository;
+        this.orderPaymentRepository = orderPaymentRepository;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -138,6 +150,7 @@ public class DemoSimulatorController {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("demoMode", modeProperties.isDemoMode());
         response.put("websiteMode", modeProperties.getWebsiteMode());
+        response.put("paymentMode", modeProperties.getPaymentMode());
         response.put("demoClient", clientMap);
         response.put("sampleSkus", sampleSkus);
         response.put(
@@ -150,6 +163,91 @@ public class DemoSimulatorController {
                         "INVALID_PHONE",
                         "UNKNOWN_SKU"));
         return response;
+    }
+
+    @PostMapping("/simulate-payment")
+    @org.springframework.web.bind.annotation.ResponseStatus(
+            org.springframework.http.HttpStatus.CREATED)
+    @Operation(
+            summary =
+                    "Create a simulated provider transaction in mock mode (owner + demo mode only)")
+    public Map<String, Object> simulatePayment(@RequestBody SimulatePaymentRequest body) {
+        requireOwnerInDemoMode();
+        if (body == null) {
+            throw new com.merqo.common.error.ValidationException(
+                    ErrorCodes.VALIDATION_FAILED, "Simulation payload is required.");
+        }
+        OnlinePaymentMethod method = OnlinePaymentMethod.fromString(body.method());
+        String normalizedRef = method.normalizeAndValidateReference(body.reference());
+        if (body.amount() == null || body.amount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new com.merqo.common.error.ValidationException(
+                    ErrorCodes.VALIDATION_FAILED, "Simulated amount must be greater than zero.");
+        }
+        Money requestedAmount = Money.of(body.amount());
+        String variant =
+                body.variant() == null || body.variant().isBlank()
+                        ? "MATCH"
+                        : body.variant().trim().toUpperCase(java.util.Locale.ROOT);
+
+        Money storedAmount = requestedAmount;
+        UUID claimedBy = null;
+        if ("WRONG_AMOUNT".equals(variant)) {
+            storedAmount =
+                    requestedAmount.compareTo(Money.of(100)) > 0
+                            ? requestedAmount.minus(Money.of(50))
+                            : requestedAmount.plus(Money.of(50));
+        } else if ("ALREADY_CLAIMED".equals(variant)) {
+            claimedBy =
+                    orderPaymentRepository.findAll(PageRequest.of(0, 1)).stream()
+                            .findFirst()
+                            .map(OrderPayment::getId)
+                            .orElseThrow(
+                                    () ->
+                                            new com.merqo.common.error.ValidationException(
+                                                    ErrorCodes.VALIDATION_FAILED,
+                                                    "Record at least one order payment first to simulate ALREADY_CLAIMED."));
+        } else if (!"MATCH".equals(variant)) {
+            throw new com.merqo.common.error.ValidationException(
+                    ErrorCodes.VALIDATION_FAILED,
+                    "Unsupported simulation variant: " + body.variant());
+        }
+
+        CardNumberGuard.rejectCardNumberInText(body.senderHint());
+        String senderHint =
+                body.senderHint() == null || body.senderHint().isBlank()
+                        ? "01711000000"
+                        : body.senderHint().trim();
+
+        if (mockProviderRepository.findByMethodAndReference(method, normalizedRef).isPresent()) {
+            throw new com.merqo.common.error.ConflictException(
+                    ErrorCodes.DUPLICATE_REFERENCE,
+                    "A simulated provider transaction already exists for "
+                            + method.name()
+                            + " / "
+                            + normalizedRef
+                            + ".");
+        }
+
+        MockProviderTransaction saved =
+                mockProviderRepository.saveAndFlush(
+                        new MockProviderTransaction(
+                                UUID.randomUUID(),
+                                method,
+                                normalizedRef,
+                                storedAmount.amount(),
+                                senderHint,
+                                claimedBy,
+                                Instant.now(clock)));
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("id", saved.getId());
+        resp.put("method", saved.getMethod().name());
+        resp.put("reference", saved.getReference());
+        resp.put("amount", saved.getAmount());
+        resp.put("senderHint", saved.getSenderHint());
+        resp.put("variant", variant);
+        resp.put("alreadyClaimed", saved.getClaimedByPaymentId() != null);
+        return resp;
     }
 
     @PostMapping("/simulate-order")
@@ -420,4 +518,11 @@ public class DemoSimulatorController {
                     null);
         }
     }
+
+    public record SimulatePaymentRequest(
+            String method,
+            String reference,
+            BigDecimal amount,
+            String senderHint,
+            String variant) {}
 }

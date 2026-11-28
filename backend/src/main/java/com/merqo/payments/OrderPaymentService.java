@@ -37,7 +37,6 @@ import com.merqo.orders.Order;
 import com.merqo.orders.OrderRepository;
 import com.merqo.orders.domain.PaymentTerms.ClaimedAdvanceMethod;
 import com.merqo.payments.PaymentDtos.ClaimedAdvanceView;
-import com.merqo.payments.PaymentDtos.CodCollectionView;
 import com.merqo.payments.PaymentDtos.OrderPaymentPositionView;
 import com.merqo.payments.PaymentDtos.OrderPaymentView;
 import com.merqo.payments.PaymentDtos.OrderPaymentsDetailResponse;
@@ -84,6 +83,7 @@ public class OrderPaymentService {
     private final SettingService settingService;
     private final AuditService auditService;
     private final RefundService refundService;
+    private final CodService codService;
     private final Clock clock;
 
     public OrderPaymentService(
@@ -98,6 +98,7 @@ public class OrderPaymentService {
             SettingService settingService,
             AuditService auditService,
             RefundService refundService,
+            CodService codService,
             Clock clock) {
         this.orderRepository = orderRepository;
         this.paymentRepository = paymentRepository;
@@ -110,6 +111,7 @@ public class OrderPaymentService {
         this.settingService = settingService;
         this.auditService = auditService;
         this.refundService = refundService;
+        this.codService = codService;
         this.clock = clock;
     }
 
@@ -141,7 +143,7 @@ public class OrderPaymentService {
                 positionView,
                 paymentViews,
                 refundService.listForOrder(orderId),
-                List.<CodCollectionView>of());
+                codService.listForOrder(orderId));
     }
 
     /** Returns prefill fields from any claimed advance on an order for payment recording forms. */

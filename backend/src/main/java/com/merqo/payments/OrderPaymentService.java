@@ -44,7 +44,6 @@ import com.merqo.payments.PaymentDtos.OrderPaymentsDetailResponse;
 import com.merqo.payments.PaymentDtos.PaymentDecisionView;
 import com.merqo.payments.PaymentDtos.PendingPaymentView;
 import com.merqo.payments.PaymentDtos.ProviderCheckResponse;
-import com.merqo.payments.PaymentDtos.RefundView;
 import com.merqo.payments.domain.CardNumberGuard;
 import com.merqo.payments.domain.ExpectedPrepayment;
 import com.merqo.payments.domain.OnlinePaymentMethod;
@@ -84,6 +83,7 @@ public class OrderPaymentService {
     private final AppUserRepository userRepository;
     private final SettingService settingService;
     private final AuditService auditService;
+    private final RefundService refundService;
     private final Clock clock;
 
     public OrderPaymentService(
@@ -97,6 +97,7 @@ public class OrderPaymentService {
             AppUserRepository userRepository,
             SettingService settingService,
             AuditService auditService,
+            RefundService refundService,
             Clock clock) {
         this.orderRepository = orderRepository;
         this.paymentRepository = paymentRepository;
@@ -108,6 +109,7 @@ public class OrderPaymentService {
         this.userRepository = userRepository;
         this.settingService = settingService;
         this.auditService = auditService;
+        this.refundService = refundService;
         this.clock = clock;
     }
 
@@ -138,7 +140,7 @@ public class OrderPaymentService {
                 claim,
                 positionView,
                 paymentViews,
-                List.<RefundView>of(),
+                refundService.listForOrder(orderId),
                 List.<CodCollectionView>of());
     }
 

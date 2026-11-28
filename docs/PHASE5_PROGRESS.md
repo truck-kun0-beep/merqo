@@ -12,7 +12,7 @@ Branch: `main`
 ## Slice Checklist
 - [x] **A.** V8 migration and pure Java domain classes (`com.merqo.payments.domain`) + unit tests
 - [x] **B.** Order payments: record, claim prefill, verify, check, pending queue, `PaymentVerifierRegistry`, `MockPaymentVerifier`, `PaymentReferenceGuard` (+ `SaleService` integration), order detail payment position & `readyForShipment` + concurrency/integration tests
-- [ ] **C.** Refunds: request, approve, reject, pay, refund list & due list + integration tests
+- [x] **C.** Refunds: request, approve, reject, pay, refund list & due list + integration tests
 - [ ] **D.** COD tracking: collection recording, courier settlements (exact/OVER/SHORT), outstanding + gap flag + integration tests
 - [ ] **E.** Read-only Payments & History (`GET /payments/history`, `GET /payments/summary`) with scoped union SQL query + integration tests
 - [ ] **F.** Hardening test suite: scope & tampering, cost privacy, card-number/secrets exclusion, 7 append-only DB triggers & repo reflection checks, all 9 audit actions, concurrency races, and financial invariants
@@ -21,18 +21,11 @@ Branch: `main`
 - [ ] **I.** Extend `scripts/smoke-local.ps1` & `scripts/check-live.ps1` (read-only), update docs, full clean-DB `run-tests.bat` + Spotless, local smoke run, commit, push & live check
 
 ## Completed Classes & Tests
-- **Slice A**:
-  - `backend/src/main/resources/db/migration/V8__payments_refunds_and_cod.sql`
-  - Shared additions: `ErrorCodes`, `AuditAction`, `SettingKey`, `MerqoModeProperties`, `application.yml`, `GlobalExceptionHandler`
-  - Domain (`com.merqo.payments.domain`): `PaymentRuleException`, `CardNumberGuard`, `OnlinePaymentMethod`, `RefundPayoutMethod`, `PaymentStatus`, `PaymentDecision`, `VerificationPolicy`, `PaymentVerifier`, `ManualPaymentVerifier`, `MockPaymentVerifier`, `BkashPaymentVerifier`, `PaymentVerifierRegistry`, `ExpectedPrepayment`, `OrderPaymentPosition`, `RecordedPaymentRules`, `PaymentReferenceGuard`, `RefundStatus`, `RefundTransitions`, `RefundApprovalPolicy`, `RefundRules`, `CodRules`, `SettlementCalculator`, `CodGapPolicy`
-  - Tests: `PaymentAndVerificationDomainTest` (7), `RefundAndCodDomainTest` (6), `SettingKeyTest` (12), `SettingsIntegrationTest` (5) — 30/30 green
-- **Slice B**:
-  - Entities & Repos: `PaymentSource`, `OrderPayment`, `PaymentDecisionRecord`, `MockProviderTransaction`, `OrderPaymentRepository`, `PaymentDecisionRepository`, `MockProviderTransactionRepository`
-  - Services & Controllers: `JpaPaymentReferenceGuard`, `PaymentVerifierConfiguration`, `PaymentDtos`, `OrderPaymentPositionService`, `OrderPaymentService`, `OrderPaymentController`
-  - Integrations: `SaleService` (shared TrxID guard), `OrderDtos`/`OrderStaffService` (`paymentPosition` + `readyForShipment`), `AuthController` (`paymentMode`, `providerCheckEnabled`), `PublicEndpointPolicyTest`
-  - Tests: `OrderPaymentsIntegrationTest` (3 tests incl. POS<->Online TrxID concurrency & verify race), `PaymentModeStartupTest` (2 tests incl. manual `VERIFIER_UNAVAILABLE` & live fail-fast startup), `OrderStaffIntegrationTest` (2), `PublicEndpointPolicyTest` (5), `PosGroup6SessionAuditDenyIntegrationTest` (2) — 14/14 green
+- **Slice A**: V8 migration, pure Java domain classes (`PaymentAndVerificationDomainTest` 7, `RefundAndCodDomainTest` 6), `SettingKey` + `ErrorCodes` + `AuditAction` + `GlobalExceptionHandler` (30/30 tests green).
+- **Slice B**: `OrderPayment`, `PaymentDecisionRecord`, `MockProviderTransaction`, repositories, `JpaPaymentReferenceGuard` (+ `SaleService`), `OrderPaymentPositionService`, `OrderPaymentService`, `OrderPaymentController`, `OrderDetailView` enrichment, `AuthController` payment flags; `OrderPaymentsIntegrationTest` & `PaymentModeStartupTest` green.
+- **Slice C**: `RefundRequest`, `RefundEvent`, `RefundRequestRepository`, `RefundEventRepository`, `RefundService`, `RefundController`, `OrderPaymentService` refunds wiring; `RefundsIntegrationTest` (full/partial caps, due list, four-eyes policy, CASH/electronic payouts, concurrency races on request/approve/pay) — green.
 
 ## Open Problems
 - None.
 
-**NEXT STEP:** Implement Slice C (`RefundRequest`, `RefundEvent`, repositories, `RefundService`, `RefundController`, wire `OrderPaymentService` refunds list, and Slice C integration + concurrency tests).
+**NEXT STEP:** Implement Slice D (`CodCollection`, `CourierSettlement`, `CourierSettlementLine`, repositories, `CodService`, `CodController`, `OrderPaymentService` COD list wiring, and Slice D integration + concurrency tests).

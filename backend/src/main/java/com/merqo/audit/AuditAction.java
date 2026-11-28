@@ -230,5 +230,38 @@ public enum AuditAction {
     APPROVAL_PIN_CHANGED,
 
     /** Goods in inspection were resolved by restocking or writing off. */
-    INSPECTION_RESOLVED
+    INSPECTION_RESOLVED,
+
+    /** An external website integration client was created. */
+    INTEGRATION_CLIENT_CREATED,
+
+    /** An external website integration client's secret was rotated. */
+    INTEGRATION_CLIENT_ROTATED,
+
+    /** An external website integration client was disabled. */
+    INTEGRATION_CLIENT_DISABLED,
+
+    /** An external website integration client was re-enabled. */
+    INTEGRATION_CLIENT_ENABLED,
+
+    /** A website order was accepted via the integration intake pipeline. */
+    ORDER_RECEIVED,
+
+    /** Staff created a manual order. */
+    MANUAL_ORDER_CREATED,
+
+    /** Staff updated customer contact/address fields on an order. */
+    ORDER_CUSTOMER_EDITED,
+
+    /** Staff confirmed an order and reserved warehouse stock. */
+    ORDER_CONFIRMED,
+
+    /** Staff declined an unconfirmed order. */
+    ORDER_DECLINED,
+
+    /** Staff cancelled an order (releasing reservation if previously confirmed). */
+    ORDER_CANCELLED,
+
+    /** Staff recorded a customer cancellation request on an order. */
+    ORDER_CANCELLATION_REQUESTED
 }

@@ -22,7 +22,9 @@ Branch: `main` (`G:\Merqo`)
   - Note for student: Cloudflare Pages frontend is live, while `merqo-api.onrender.com` returned 404/502 (service URL/deployment on Render may differ or be suspended). Continuing with Phase 4 as instructed.
 
 ## Slice Checklist
-- [ ] **Slice A**: Flyway V7 migration (with append-only triggers on `order_status_history`, `order_call_logs`) + pure Java domain classes (section 4) + unit tests
+- [x] **Slice A**: Flyway V7 migration (with append-only triggers on `order_status_history`, `order_call_logs`) + pure Java domain classes (section 4) + unit tests
+  - Built: `V7__online_orders_and_integrations.sql` (sequence, `integration_clients`, `integration_rate_attempts`, `customers`, `orders`, `order_lines`, `order_status_history` + trigger, `order_call_logs` + trigger, `integration_inbox`), `ErrorCodes`, `AuditAction`, `SettingKey` (`orders.follow_up_default_minutes`, `integration.signature_window_seconds`), `GlobalExceptionHandler` (`OrderRuleException`), and pure Java domain classes under `com.merqo.orders.domain` (`OrderRuleException`, `PhoneNumber`, `RequestSignature`, `OrderChannel`, `OrderStatus`, `OrderTransitions`, `PaymentTerms`, `IncomingOrder`, `IncomingOrderValidator`, `OnlineAvailabilityCalculator`, `PhoneHistory`, `PhoneRiskPolicy`, `CallResult`, `DeclineReason`, `CancelReason`, `WebsiteOrderSource`).
+  - Tests: `OrderDomainTest` (8 tests), `RequestSignatureTest` (2 tests), `SettingKeyTest` (12 tests) — verifying green with Flyway V7 validation.
 - [ ] **Slice B**: Integration clients & signature security (`integration_clients`, AES-GCM secret storage, owner endpoints, API key/HMAC filter for `/integration/v1/**`, rate limit, public-endpoint policy update + tests)
 - [ ] **Slice C**: Order intake pipeline (`integration_inbox`, `GenericApiOrderSource`, order/line creation, idempotency, price mismatch, unknown SKU failure & retry, invalid phone, stock availability & order status endpoints + concurrency tests)
 - [ ] **Slice D**: Staff order handling (list, detail, call log, customer edit, confirm hard reserve, decline, cancel release, cancellation request, availability view + concurrency & trigger tests)
@@ -40,4 +42,4 @@ Branch: `main` (`G:\Merqo`)
 - Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice A — Write `V7__online_orders_and_integrations.sql` (Supabase-compatible, with append-only triggers on `order_status_history` and `order_call_logs`) and the pure Java domain classes in section 4 with unit tests, run the new unit tests and Spotless, update `docs/PHASE4_PROGRESS.md`, and commit.
+NEXT STEP: Slice B — Implement `integration_clients` entities/repository/AES-GCM secret encryption (`INTEGRATION_SECRET_KEY`), owner endpoints (`/api/v1/integration/clients*`), `/integration/v1/**` signature/rate-limit security filter, public-endpoint policy update, and integration/secret tests.

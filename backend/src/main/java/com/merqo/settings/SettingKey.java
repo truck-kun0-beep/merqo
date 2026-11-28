@@ -50,7 +50,11 @@ public enum SettingKey {
     THRESHOLD_UNUSUAL_ADJUSTMENT_VALUE(
             "threshold.unusual_adjustment_value", ValueType.AMOUNT, "5000.00"),
 
-    POS_RETURN_WINDOW_DAYS("pos.return_window_days", ValueType.INTEGER, "30");
+    POS_RETURN_WINDOW_DAYS("pos.return_window_days", ValueType.INTEGER, "30"),
+
+    ORDERS_FOLLOW_UP_DEFAULT_MINUTES("orders.follow_up_default_minutes", ValueType.INTEGER, "120"),
+    INTEGRATION_SIGNATURE_WINDOW_SECONDS(
+            "integration.signature_window_seconds", ValueType.INTEGER, "300");
 
     /** The paper widths a receipt printer may use, in millimetres. */
     public static final Set<Integer> ALLOWED_PAPER_WIDTHS = Set.of(58, 80);
@@ -157,6 +161,10 @@ public enum SettingKey {
             int parsed = Integer.parseInt(value);
             if (parsed < 0) {
                 throw new IllegalArgumentException(getKey() + " must not be negative.");
+            }
+            if (this == INTEGRATION_SIGNATURE_WINDOW_SECONDS && (parsed < 60 || parsed > 900)) {
+                throw new IllegalArgumentException(
+                        getKey() + " must be between 60 and 900 seconds.");
             }
             return parsed;
         } catch (NumberFormatException exception) {

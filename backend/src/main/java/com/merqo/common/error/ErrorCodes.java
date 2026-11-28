@@ -154,6 +154,36 @@ public final class ErrorCodes {
     /** The sale is outside the return window and no override permission was granted. */
     public static final String RETURN_WINDOW_EXPIRED = "RETURN_WINDOW_EXPIRED";
 
+    /** Website HMAC signature or key id is invalid or unknown. */
+    public static final String INVALID_SIGNATURE = "INVALID_SIGNATURE";
+
+    /** Website request timestamp is outside the allowed replay window. */
+    public static final String SIGNATURE_EXPIRED = "SIGNATURE_EXPIRED";
+
+    /** The integration client has been disabled by the owner. */
+    public static final String INTEGRATION_DISABLED = "INTEGRATION_DISABLED";
+
+    /** One or more SKUs on the incoming website order are unknown or inactive. */
+    public static final String UNKNOWN_SKU = "UNKNOWN_SKU";
+
+    /** Stated website order total does not match recomputed line/discount/shipping sum. */
+    public static final String ORDER_TOTAL_MISMATCH = "ORDER_TOTAL_MISMATCH";
+
+    /** Confirmation requires a valid normalized customer phone number. */
+    public static final String INVALID_PHONE = "INVALID_PHONE";
+
+    /** No active warehouse is configured for online order fulfillment. */
+    public static final String ONLINE_LOCATION_NOT_SET = "ONLINE_LOCATION_NOT_SET";
+
+    /** Non-answered confirmation calls require an explanatory note. */
+    public static final String CALL_NOTE_REQUIRED = "CALL_NOTE_REQUIRED";
+
+    /** Decline or cancel reasons marked OTHER require an explanatory note. */
+    public static final String REASON_REQUIRED = "REASON_REQUIRED";
+
+    /** API client exceeded the per-minute request rate limit. */
+    public static final String RATE_LIMITED = "RATE_LIMITED";
+
     /** Something unexpected happened. */
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 

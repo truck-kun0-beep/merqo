@@ -23,6 +23,7 @@ import com.merqo.common.error.BusinessException;
 import com.merqo.common.error.ErrorCodes;
 import com.merqo.common.error.ProblemDetail;
 import com.merqo.common.error.PromotionConflictException;
+import com.merqo.orders.domain.OrderRuleException;
 import com.merqo.pos.domain.PosRuleException;
 
 /**
@@ -101,6 +102,37 @@ public class GlobalExceptionHandler {
             PosRuleException exception, HttpServletRequest request) {
         log.info(
                 "POS rule rejected the request: code={} message={}",
+                exception.getErrorCode(),
+                exception.getMessage());
+        HttpStatus status = HttpStatus.valueOf(exception.getHttpStatus());
+        return ResponseEntity.status(status)
+                .body(
+                        ProblemDetail.of(
+                                PROBLEM_TYPE_BASE
+                                        + exception
+                                                .getErrorCode()
+                                                .toLowerCase(java.util.Locale.ROOT),
+                                status.getReasonPhrase(),
+                                status.value(),
+                                exception.getMessage(),
+                                request.getRequestURI(),
+                                exception.getErrorCode(),
+                                currentCorrelationId(),
+                                Instant.now(clock)));
+    }
+
+    /**
+     * Handles pure Java order and integration domain rule rejections.
+     *
+     * @param exception the raised order domain rule exception
+     * @param request the current request
+     * @return the RFC 7807 problem detail response
+     */
+    @ExceptionHandler(OrderRuleException.class)
+    public ResponseEntity<ProblemDetail> handleOrderRuleException(
+            OrderRuleException exception, HttpServletRequest request) {
+        log.info(
+                "Order rule rejected the request: code={} message={}",
                 exception.getErrorCode(),
                 exception.getMessage());
         HttpStatus status = HttpStatus.valueOf(exception.getHttpStatus());

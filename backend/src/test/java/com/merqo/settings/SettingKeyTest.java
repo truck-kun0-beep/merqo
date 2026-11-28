@@ -61,6 +61,13 @@ class SettingKeyTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> SettingKey.THRESHOLD_DEAD_STOCK_DAYS.parse("-1"));
+        assertEquals(300, SettingKey.INTEGRATION_SIGNATURE_WINDOW_SECONDS.parse("300"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SettingKey.INTEGRATION_SIGNATURE_WINDOW_SECONDS.parse("59"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SettingKey.INTEGRATION_SIGNATURE_WINDOW_SECONDS.parse("901"));
     }
 
     @Test

@@ -611,18 +611,6 @@ public class OrderStaffService {
     @Transactional(readOnly = true)
     public WarehouseAvailabilityResponse warehouseAvailability(
             AccessContext context, List<String> skus, String q) {
-        Set<UUID> orderScope =
-                context.visibleLocationIds(
-                        Permission.ORDER_VIEW, Set.copyOf(locationRepository.findAllIds()));
-        Set<UUID> invScope =
-                context.visibleLocationIds(
-                        Permission.INVENTORY_VIEW, Set.copyOf(locationRepository.findAllIds()));
-        if (!context.isOwner() && orderScope.isEmpty() && invScope.isEmpty()) {
-            throw new ForbiddenException(
-                    ErrorCodes.FORBIDDEN,
-                    "You do not have permission to view online availability.");
-        }
-
         Location warehouse =
                 locationRepository
                         .findFirstByOnlineFulfillmentTrueAndActiveTrue()
@@ -633,9 +621,8 @@ public class OrderStaffService {
                                                 "No active warehouse is configured for online"
                                                         + " fulfillment."));
 
-        context.requireInScope(warehouse.getId());
-        context.require(Permission.ORDER_VIEW, warehouse.getId());
-        context.require(Permission.INVENTORY_VIEW, warehouse.getId());
+        requireWarehouseOrDeny(context, warehouse.getId(), Permission.ORDER_VIEW);
+        requireWarehouseOrDeny(context, warehouse.getId(), Permission.INVENTORY_VIEW);
 
         List<ProductVariant> variants = resolveAvailabilityVariants(skus, q);
         List<WarehouseAvailabilityRow> rows = new ArrayList<>();
@@ -705,22 +692,37 @@ public class OrderStaffService {
 
     private Order loadScopedOrder(
             AccessContext context, UUID orderId, Permission requiredPermission, boolean forUpdate) {
-        Set<UUID> viewLocations = requireAnyOrderViewScope(context);
         Order order =
                 (forUpdate
                                 ? orderRepository.findByIdForUpdate(orderId)
                                 : orderRepository.findById(orderId))
                         .orElseThrow(() -> new NotFoundException("Order not found."));
 
-        // If caller is scoped to other branches (e.g. manager-dm) and WH is out of scope -> 404.
-        if (!context.isOwner() && !viewLocations.contains(order.getLocationId())) {
-            context.requireInScope(order.getLocationId());
-            throw new ForbiddenException(
-                    ErrorCodes.FORBIDDEN, "You do not have permission at this location.");
-        }
-        context.requireInScope(order.getLocationId());
-        context.require(requiredPermission, order.getLocationId());
+        requireWarehouseOrDeny(context, order.getLocationId(), requiredPermission);
         return order;
+    }
+
+    /**
+     * Enforces branch isolation (404) for managers outside WH scope before permission checks, while
+     * denying unpermitted staff (e.g. cashiers) with 403.
+     */
+    static void requireWarehouseOrDeny(
+            AccessContext context, UUID locationId, Permission permission) {
+        if (context.isOwner()) {
+            return;
+        }
+        if (context.getAccountType() == com.merqo.access.AccountType.MANAGER) {
+            context.requireInScope(locationId);
+            context.require(permission, locationId);
+            return;
+        }
+        if (context.visibleLocationIds(permission).isEmpty()) {
+            throw new ForbiddenException(
+                    ErrorCodes.FORBIDDEN,
+                    "You do not have the permission " + permission.name() + ".");
+        }
+        context.requireInScope(locationId);
+        context.require(permission, locationId);
     }
 
     private long countInLocationsAndStatus(Set<UUID> locations, OrderStatus status) {

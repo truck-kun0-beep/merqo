@@ -30,7 +30,6 @@ import com.merqo.catalog.VariantBarcode;
 import com.merqo.catalog.VariantBarcodeRepository;
 import com.merqo.common.error.ConflictException;
 import com.merqo.common.error.ErrorCodes;
-import com.merqo.common.error.ForbiddenException;
 import com.merqo.common.error.ValidationException;
 import com.merqo.common.money.Money;
 import com.merqo.location.Location;
@@ -94,15 +93,6 @@ public class ManualOrderService {
     @Transactional
     public OrderDetailView create(
             AccessContext context, CreateManualOrderRequest body, HttpServletRequest httpRequest) {
-        var visibleCreateLocations =
-                context.visibleLocationIds(
-                        Permission.ORDER_CREATE_MANUAL,
-                        java.util.Set.copyOf(locationRepository.findAllIds()));
-        if (!context.isOwner() && visibleCreateLocations.isEmpty()) {
-            throw new ForbiddenException(
-                    ErrorCodes.FORBIDDEN, "You do not have permission to create manual orders.");
-        }
-
         Location warehouse =
                 locationRepository
                         .findFirstByOnlineFulfillmentTrueAndActiveTrue()
@@ -113,8 +103,8 @@ public class ManualOrderService {
                                                 "No active warehouse is configured for online"
                                                         + " fulfillment."));
 
-        context.requireInScope(warehouse.getId());
-        context.require(Permission.ORDER_CREATE_MANUAL, warehouse.getId());
+        OrderStaffService.requireWarehouseOrDeny(
+                context, warehouse.getId(), Permission.ORDER_CREATE_MANUAL);
         if (body.confirmNow()) {
             context.require(Permission.ORDER_CONFIRM, warehouse.getId());
         }

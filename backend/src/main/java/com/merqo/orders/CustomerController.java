@@ -1,8 +1,6 @@
 package com.merqo.orders;
 
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,7 +14,6 @@ import com.merqo.access.AccessContext;
 import com.merqo.access.Permission;
 import com.merqo.common.error.ConflictException;
 import com.merqo.common.error.ErrorCodes;
-import com.merqo.common.error.ForbiddenException;
 import com.merqo.common.error.ValidationException;
 import com.merqo.location.Location;
 import com.merqo.location.LocationRepository;
@@ -52,14 +49,6 @@ public class CustomerController {
     @Operation(summary = "Look up customer order history and refusal risk badge by phone number")
     public CustomerHistoryResponse history(@RequestParam("phone") String rawPhone) {
         AccessContext context = currentUserService.requireAccessContext();
-        Set<UUID> orderLocations =
-                context.visibleLocationIds(
-                        Permission.ORDER_VIEW, Set.copyOf(locationRepository.findAllIds()));
-        if (!context.isOwner() && orderLocations.isEmpty()) {
-            throw new ForbiddenException(
-                    ErrorCodes.FORBIDDEN, "You do not have permission to view customer history.");
-        }
-
         Location warehouse =
                 locationRepository
                         .findFirstByOnlineFulfillmentTrueAndActiveTrue()
@@ -69,8 +58,7 @@ public class CustomerController {
                                                 ErrorCodes.ONLINE_LOCATION_NOT_SET,
                                                 "No active warehouse is configured for online"
                                                         + " fulfillment."));
-        context.requireInScope(warehouse.getId());
-        context.require(Permission.ORDER_VIEW, warehouse.getId());
+        OrderStaffService.requireWarehouseOrDeny(context, warehouse.getId(), Permission.ORDER_VIEW);
 
         PhoneNumber parsed = PhoneNumber.parse(rawPhone);
         if (!parsed.isValid()) {

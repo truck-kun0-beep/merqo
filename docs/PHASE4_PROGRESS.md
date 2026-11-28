@@ -37,7 +37,9 @@ Branch: `main` (`G:\Merqo`)
 - [x] **Slice E**: Manual orders & customer history (`POST /orders/manual`, history counts, risk badge, `GET /customers/history` + tier/threshold tests)
   - Built: `ManualOrderService`, `CustomerController` (`/api/v1/customers/history`), `POST /api/v1/orders/manual` on `OrderController`.
   - Tests: `OrderManualAndCustomerIntegrationTest` (2 tests verifying server catalog + ONLINE promo pricing ignoring POS-only promos, `confirmNow` atomic reserve, customer history counts and `NEW`/`OK`/`WATCH`/`HIGH` risk progression driven by live `threshold.refusal_risk_count`) — 2/2 passing + Spotless clean.
-- [ ] **Slice F**: Scope, privacy & hardening tests (warehouse isolation, 404/403, tampered IDs, Jackson cost-key checks, audit rows, default-deny enumeration)
+- [x] **Slice F**: Scope, privacy & hardening tests (warehouse isolation, 404/403, tampered IDs, Jackson cost-key checks, audit rows, default-deny enumeration)
+  - Hardened: `OrderStaffService.requireWarehouseOrDeny`, `ManualOrderService`, `CustomerController` so managers outside WH scope always receive `404 NOT_FOUND` while unpermitted staff receive `403 FORBIDDEN`.
+  - Tests: `OrderHardeningIntegrationTest` (2 tests verifying manager 404 / cashier 403 / WH staff missing `ORDER_CANCEL` 403 / tampered ID 404, Jackson recursive key-absence across all endpoints, all 11 Phase 4 audit actions, and append-only repository guarantees) + `PublicEndpointPolicyTest` — passing + Spotless clean.
 - [ ] **Slice G**: Website simulator (`tools/website-simulator/send-order.mjs` & `.ps1`), Demo Console endpoints, and `docs/INTEGRATION_API.md`
 - [ ] **Slice H**: Phase 4 demo data (`DemoOrdersContributor` through real services, idempotent, ~20 orders across states & risk tiers, `DEMO_MODE=false` empty)
 - [ ] **Slice I**: Frontend (Online Orders list & detail, Manual order form, Integration clients settings page, Demo Console page, Overview pending-orders card, Vitest tests, lint/typecheck/build)
@@ -50,4 +52,4 @@ Branch: `main` (`G:\Merqo`)
 - Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice F — Add `OrderHardeningIntegrationTest` proving warehouse scope isolation (`manager-dm` 404, `cashier-dm` 403), Jackson recursive key-absence privacy assertions across all endpoints, all 11 Phase 4 audit actions, tampered IDs, and append-only repository checks.
+NEXT STEP: Slice G — Build `MockWebsiteOrderSource`, Demo Console backend endpoints (`GET /api/v1/demo/simulator-info`, `POST /api/v1/demo/simulate-order`), zero-dependency website simulators (`tools/website-simulator/send-order.mjs` and `send-order.ps1`), full `docs/INTEGRATION_API.md`, and integration tests.

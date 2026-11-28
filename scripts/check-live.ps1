@@ -49,7 +49,7 @@ param(
     # The address of the deployed backend. The default is the Render URL. The
     # direct check is only a diagnosis: the proxy check below is the one that
     # matters, because the browser only ever talks to the Pages URL.
-    [string] $BackendUrl = 'https://merqo-api.onrender.com',
+    [string] $BackendUrl = 'https://merqo.onrender.com',
 
     # The demo account to sign in with. The default is the owner, who sees
     # every branch and every permission.

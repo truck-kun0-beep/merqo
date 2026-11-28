@@ -1,5 +1,6 @@
 import { apiRequest, toQueryString } from './client'
 import type { PageResponse } from './models'
+import type { OrderPaymentPositionView } from './payments'
 
 export type OrderChannel = 'ONLINE' | 'MANUAL'
 
@@ -164,6 +165,8 @@ export interface OrderDetailView {
   lines: OrderLineView[]
   callLogs: OrderCallLogView[]
   statusHistory: OrderStatusHistoryView[]
+  paymentPosition?: OrderPaymentPositionView
+  readyForShipment?: boolean
 }
 
 export interface OrderCancelResponse {
@@ -245,6 +248,7 @@ export interface SimulatorSampleSku {
 export interface SimulatorInfoResponse {
   demoMode: boolean
   websiteMode: string
+  paymentMode?: string
   demoClient: {
     id: string
     name: string

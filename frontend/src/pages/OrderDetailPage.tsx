@@ -16,6 +16,7 @@ import {
   type OrderDetailView,
 } from '../api/orders'
 import { OrderFlagsBadges, RiskBadge } from '../components/OrderBadges'
+import { OrderPaymentsCard } from '../components/OrderPaymentsCard'
 import {
   Badge,
   Button,
@@ -534,6 +535,8 @@ export default function OrderDetailPage() {
               </div>
             </div>
           </section>
+
+          <OrderPaymentsCard orderId={order.id} />
 
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
             <h2 className="text-sm font-semibold text-slate-900">Status history</h2>

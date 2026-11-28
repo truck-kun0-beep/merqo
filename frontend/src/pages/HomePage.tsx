@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchLocations } from '../api/business'
 import { fetchOrderCounts } from '../api/orders'
+import { fetchPendingPayments } from '../api/payments'
 import { fetchCurrentCashSession, fetchSales } from '../api/pos'
 import HealthPanel from '../components/HealthPanel'
 import ServerWakingUp from '../components/ServerWakingUp'
@@ -37,6 +38,12 @@ const ACTION_CENTER_SLOTS = [
     label: 'Orders awaiting confirmation',
     hint: 'Online & manual orders needing call confirmation',
     to: '/orders?needsAction=true',
+  },
+  {
+    key: 'payments-pending',
+    label: 'Payments awaiting verification',
+    hint: 'Online advances & website claims needing verification',
+    to: '/payments?tab=pending',
   },
   {
     key: 'low-stock',
@@ -107,6 +114,12 @@ export default function HomePage() {
     queryKey: ['orders', 'counts', 'overview'],
     queryFn: fetchOrderCounts,
     enabled: Boolean(user && can('ORDER_VIEW')),
+  })
+
+  const pendingPaymentsQuery = useQuery({
+    queryKey: ['payments', 'pending', 'overview'],
+    queryFn: fetchPendingPayments,
+    enabled: Boolean(user && can('PAYMENT_VERIFY')),
   })
 
   const activeSession = branchSessionQuery.data?.session ?? null
@@ -274,7 +287,9 @@ export default function HomePage() {
                   <span className="text-xs font-medium text-slate-600 tabular-nums">
                     {slot.key === 'orders-pending' && can('ORDER_VIEW')
                       ? orderCountsQuery.data?.needsAction ?? '—'
-                      : '—'}
+                      : slot.key === 'payments-pending' && can('PAYMENT_VERIFY')
+                        ? pendingPaymentsQuery.data?.length ?? '—'
+                        : '—'}
                   </span>
                 </li>
               ))}

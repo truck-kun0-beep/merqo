@@ -7,6 +7,11 @@ import {
   type SimulateOrderResponse,
 } from '../api/orders'
 import {
+  simulateDemoPayment,
+  type OnlinePaymentMethod,
+  type SimulatePaymentResponse,
+} from '../api/payments'
+import {
   Badge,
   Button,
   ErrorState,
@@ -28,6 +33,13 @@ export default function DemoConsolePage() {
   const [quantity, setQuantity] = useState('1')
   const [lastResult, setLastResult] = useState<SimulateOrderResponse | null>(null)
 
+  const [payMethod, setPayMethod] = useState<OnlinePaymentMethod>('BKASH')
+  const [payRef, setPayRef] = useState('SIMBK9901')
+  const [payAmount, setPayAmount] = useState('810.00')
+  const [paySender, setPaySender] = useState('01700000099')
+  const [payVariant, setPayVariant] = useState<'MATCHING' | 'MISMATCH' | 'NOT_FOUND'>('MATCHING')
+  const [lastPaymentResult, setLastPaymentResult] = useState<SimulatePaymentResponse | null>(null)
+
   const simulateMutation = useMutation({
     mutationFn: (overridePreset?: string) =>
       simulateDemoOrder({
@@ -37,6 +49,20 @@ export default function DemoConsolePage() {
       }),
     onSuccess: (res) => {
       setLastResult(res)
+    },
+  })
+
+  const simulatePayMutation = useMutation({
+    mutationFn: () =>
+      simulateDemoPayment({
+        method: payMethod,
+        reference: payRef.trim().toUpperCase(),
+        amount: payAmount.trim(),
+        senderHint: paySender.trim() || undefined,
+        variant: payVariant,
+      }),
+    onSuccess: (res) => {
+      setLastPaymentResult(res)
     },
   })
 
@@ -60,7 +86,7 @@ export default function DemoConsolePage() {
     <div className="space-y-6">
       <PageHeader
         title="Demo Console"
-        description={`Owner-only signed webhook simulator (WEBSITE_MODE=${info.websiteMode}).`}
+        description={`Owner-only signed webhook & mock payment simulator (WEBSITE_MODE=${info.websiteMode}, PAYMENT_MODE=${info.paymentMode ?? 'manual'}).`}
       />
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-2 text-xs">
@@ -169,6 +195,89 @@ export default function DemoConsolePage() {
           </pre>
         </section>
       ) : null}
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Simulate provider payment</h2>
+          <p className="text-xs text-slate-500">
+            Seeds a mock bKash / Nagad / Card / Bank transaction record that{' '}
+            <code>PAYMENT_MODE=mock</code> can verify via Check with provider.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-5">
+          <FormField label="Method">
+            <Select
+              aria-label="Simulated payment method"
+              value={payMethod}
+              onChange={(e) => setPayMethod(e.target.value as OnlinePaymentMethod)}
+            >
+              <option value="BKASH">BKASH</option>
+              <option value="NAGAD">NAGAD</option>
+              <option value="CARD">CARD</option>
+              <option value="BANK">BANK</option>
+            </Select>
+          </FormField>
+          <FormField label="Reference / TrxID">
+            <Input
+              aria-label="Simulated payment reference"
+              value={payRef}
+              onChange={(e) => setPayRef(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Amount (BDT)">
+            <Input
+              aria-label="Simulated payment amount"
+              type="number"
+              step="0.01"
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Sender hint">
+            <Input
+              aria-label="Simulated sender hint"
+              value={paySender}
+              onChange={(e) => setPaySender(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Variant">
+            <Select
+              aria-label="Simulated payment variant"
+              value={payVariant}
+              onChange={(e) =>
+                setPayVariant(e.target.value as 'MATCHING' | 'MISMATCH' | 'NOT_FOUND')
+              }
+            >
+              <option value="MATCHING">MATCHING</option>
+              <option value="MISMATCH">MISMATCH</option>
+              <option value="NOT_FOUND">NOT_FOUND</option>
+            </Select>
+          </FormField>
+        </div>
+
+        <Button
+          onClick={() => simulatePayMutation.mutate()}
+          isLoading={simulatePayMutation.isPending}
+        >
+          Simulate provider payment
+        </Button>
+
+        {simulatePayMutation.isError ? (
+          <ErrorState title="Payment simulation failed" error={simulatePayMutation.error} />
+        ) : null}
+
+        {lastPaymentResult ? (
+          <div className="rounded-lg bg-slate-50 p-3 text-xs space-y-1">
+            <p className="font-semibold text-slate-900">
+              Seeded {lastPaymentResult.method} · {lastPaymentResult.reference} (৳{' '}
+              {lastPaymentResult.amount}, {lastPaymentResult.variant})
+            </p>
+            <p className="text-slate-600">
+              Already claimed in Merqo: {lastPaymentResult.alreadyClaimed ? 'Yes' : 'No'}
+            </p>
+          </div>
+        ) : null}
+      </section>
     </div>
   )
 }

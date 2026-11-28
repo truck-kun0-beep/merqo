@@ -27,6 +27,7 @@ import ManualOrderPage from './pages/ManualOrderPage'
 import WarehouseAvailabilityPage from './pages/WarehouseAvailabilityPage'
 import IntegrationClientsPage from './pages/IntegrationClientsPage'
 import DemoConsolePage from './pages/DemoConsolePage'
+import PaymentsPage from './pages/PaymentsPage'
 import DevReceiptPreviewPage from './pages/DevReceiptPreviewPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RequireSession, { RequireSignedOut } from './session/RequireSession'
@@ -227,6 +228,23 @@ export default function App() {
           element={
             <RequireSession permission="ORDER_VIEW">
               <OrderDetailPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="payments"
+          element={
+            <RequireSession
+              anyPermission={[
+                'PAYMENT_VIEW',
+                'PAYMENT_VERIFY',
+                'REFUND_REQUEST',
+                'REFUND_APPROVE',
+                'REFUND_PAY',
+                'COD_SETTLEMENT_MANAGE',
+              ]}
+            >
+              <PaymentsPage />
             </RequireSession>
           }
         />

@@ -14,7 +14,7 @@ const STATIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PAYMENT_INSUFFICIENT: 'Payment amount is less than the sale total.',
   CARD_NUMBER_REJECTED:
     'Do not enter a full card number. Enter only the last 4 digits or an approval code.',
-  DUPLICATE_REFERENCE: 'This payment reference (TrxID) was already used on another sale.',
+  DUPLICATE_REFERENCE: 'This payment reference (TrxID) is already in use on another sale or order.',
   IDEMPOTENCY_CONFLICT:
     'A different request was already processed with this idempotency key. Refresh and check before retrying.',
   EMPTY_CART: 'Add at least one item to the cart before completing a sale.',
@@ -32,6 +32,16 @@ const STATIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   CALL_NOTE_REQUIRED: 'Enter a call note when the customer does not answer normally.',
   REASON_REQUIRED: 'Please provide an explanatory note when selecting OTHER.',
   RATE_LIMITED: 'API client exceeded the 60 requests/minute rate limit. Wait briefly and retry.',
+  PAYMENT_NOT_EXPECTED: 'This COD-only order does not accept an advance payment.',
+  PAYMENT_ALREADY_DECIDED: 'This payment already has an immutable verification decision.',
+  SELF_VERIFICATION_NOT_ALLOWED:
+    'Separate verifier policy prevents verifying a payment you recorded yourself.',
+  VERIFIER_UNAVAILABLE:
+    'Automatic provider verification is disabled in manual payment mode.',
+  SELF_APPROVAL_NOT_ALLOWED: 'You cannot approve or reject your own refund request.',
+  COD_NOT_EXPECTED: 'This order does not expect any Cash on Delivery collection.',
+  SETTLEMENT_MISMATCH:
+    'Received settlement amount differs from expected net. Add an explanatory note to record the variance.',
 }
 
 /**
@@ -65,6 +75,14 @@ export function resolveApiErrorMessage(
       return fallbackDetail || 'Not enough sellable stock available at this location.'
     case 'ORDER_TOTAL_MISMATCH':
       return fallbackDetail || 'Order grand total does not match line subtotal, discount, and shipping.'
+    case 'PAYMENT_EXCEEDS_TOTAL':
+      return fallbackDetail || 'Recorded payments would exceed the order expected prepayment or total.'
+    case 'AMOUNT_MISMATCH':
+      return fallbackDetail || 'Confirmed amount must match the recorded payment amount.'
+    case 'REFUND_EXCEEDS_PAID':
+      return fallbackDetail || 'Refund amount exceeds the remaining refundable verified payment balance.'
+    case 'COD_EXCEEDS_EXPECTED':
+      return fallbackDetail || 'Amount exceeds remaining expected COD or unsettled courier balance.'
     default:
       return fallbackDetail
   }
@@ -101,4 +119,18 @@ export const MAPPED_ORDER_ERROR_CODES = [
   'CALL_NOTE_REQUIRED',
   'REASON_REQUIRED',
   'RATE_LIMITED',
+] as const
+
+export const MAPPED_PAYMENT_ERROR_CODES = [
+  'PAYMENT_NOT_EXPECTED',
+  'PAYMENT_EXCEEDS_TOTAL',
+  'PAYMENT_ALREADY_DECIDED',
+  'AMOUNT_MISMATCH',
+  'SELF_VERIFICATION_NOT_ALLOWED',
+  'VERIFIER_UNAVAILABLE',
+  'REFUND_EXCEEDS_PAID',
+  'SELF_APPROVAL_NOT_ALLOWED',
+  'COD_NOT_EXPECTED',
+  'COD_EXCEEDS_EXPECTED',
+  'SETTLEMENT_MISMATCH',
 ] as const

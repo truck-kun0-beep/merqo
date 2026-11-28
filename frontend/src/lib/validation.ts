@@ -256,3 +256,160 @@ export const manualOrderFormSchema = z.object({
     .min(1, 'Add at least one item.')
     .max(50, 'Orders cannot exceed 50 lines.'),
 })
+
+/** Mirrors `com.merqo.payments.domain.CardNumberGuard`. Detects PAN-like 13-19 digit strings. */
+export function containsCardNumberLikeText(raw: string): boolean {
+  if (!raw || !raw.trim()) return false
+  return /(?:^|\D)\d(?:[\s-]?\d){12,18}(?!\d)/.test(raw)
+}
+
+export function validateOnlineMethodReference(
+  method: 'BKASH' | 'NAGAD' | 'CARD' | 'BANK',
+  rawReference: string,
+): string | null {
+  const ref = rawReference.trim().toUpperCase()
+  if (containsCardNumberLikeText(rawReference)) {
+    return 'Do not enter a full card number. Enter only the last 4 digits or approval code.'
+  }
+  if (!ref) {
+    return 'Payment reference is required.'
+  }
+  if (method === 'BKASH' || method === 'NAGAD') {
+    if (!/^[A-Z0-9]{6,20}$/.test(ref)) {
+      return 'TrxID must be 6 to 20 letters/digits with no spaces.'
+    }
+    return null
+  }
+  if (method === 'CARD') {
+    if (!/^[A-Z0-9]{4,12}$/.test(ref)) {
+      return 'Card reference must be 4 to 12 letters/digits (last 4 or approval code).'
+    }
+    return null
+  }
+  if (!/^(?=.*[A-Z0-9])[A-Z0-9-]{4,30}$/.test(ref)) {
+    return 'Bank reference must be 4 to 30 letters, digits, or hyphens.'
+  }
+  return null
+}
+
+export const recordOrderPaymentSchema = z
+  .object({
+    method: z.enum(['BKASH', 'NAGAD', 'CARD', 'BANK']),
+    amount: z
+      .string()
+      .trim()
+      .refine((v) => !Number.isNaN(Number(v)) && Number(v) > 0, {
+        message: 'Payment amount must be greater than zero.',
+      }),
+    reference: z.string().trim(),
+    payerNote: z.string().trim().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const refErr = validateOnlineMethodReference(data.method, data.reference)
+    if (refErr) {
+      ctx.addIssue({ code: 'custom', path: ['reference'], message: refErr })
+    }
+    if (data.payerNote && containsCardNumberLikeText(data.payerNote)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payerNote'],
+        message: 'Do not enter a full card number in notes.',
+      })
+    }
+  })
+
+export const verifyPaymentFormSchema = z
+  .object({
+    decision: z.enum(['VERIFIED', 'REJECTED']),
+    confirmedAmount: z.string().trim().optional(),
+    evidence: z.string().trim(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.decision === 'VERIFIED') {
+      if (!data.confirmedAmount || Number.isNaN(Number(data.confirmedAmount)) || Number(data.confirmedAmount) <= 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['confirmedAmount'],
+          message: 'Enter the confirmed payment amount.',
+        })
+      }
+    } else if (!data.evidence.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['evidence'],
+        message: 'Rejection reason or evidence is required when rejecting a payment.',
+      })
+    }
+    if (containsCardNumberLikeText(data.evidence)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['evidence'],
+        message: 'Do not enter a full card number in evidence.',
+      })
+    }
+  })
+
+export const refundRequestFormSchema = z
+  .object({
+    amount: z
+      .string()
+      .trim()
+      .refine((v) => !Number.isNaN(Number(v)) && Number(v) > 0, {
+        message: 'Refund amount must be greater than zero.',
+      }),
+    reason: z.string().trim().min(1, 'Refund reason is required.'),
+    note: z.string().trim().optional(),
+  })
+  .refine((d) => !d.note || !containsCardNumberLikeText(d.note), {
+    path: ['note'],
+    message: 'Do not enter a full card number in notes.',
+  })
+
+export const refundPayFormSchema = z
+  .object({
+    payoutMethod: z.enum(['BKASH', 'NAGAD', 'CARD', 'BANK', 'CASH']),
+    payoutReference: z.string().trim(),
+    note: z.string().trim(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.payoutMethod === 'CASH') {
+      if (data.payoutReference.length > 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['payoutReference'],
+          message: 'Leave payout reference blank for cash refunds.',
+        })
+      }
+      if (!data.note) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['note'],
+          message: 'An explanatory note is required for cash refund payouts.',
+        })
+      }
+    } else {
+      const refErr = validateOnlineMethodReference(data.payoutMethod, data.payoutReference)
+      if (refErr) {
+        ctx.addIssue({ code: 'custom', path: ['payoutReference'], message: refErr })
+      }
+    }
+    if (data.note && containsCardNumberLikeText(data.note)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['note'],
+        message: 'Do not enter a full card number in notes.',
+      })
+    }
+  })
+
+export const codCollectionFormSchema = z.object({
+  courier: z.string().trim().min(1, 'Courier name is required.'),
+  amount: z
+    .string()
+    .trim()
+    .refine((v) => !Number.isNaN(Number(v)) && Number(v) > 0, {
+      message: 'Collected amount must be greater than zero.',
+    }),
+  collectedOn: z.string().trim().min(1, 'Collection date is required.'),
+  note: z.string().trim().optional(),
+})

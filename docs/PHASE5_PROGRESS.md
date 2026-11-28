@@ -17,7 +17,7 @@ Branch: `main`
 - [x] **E.** Read-only Payments & History (`GET /payments/history`, `GET /payments/summary`) with scoped union SQL query + integration tests
 - [x] **F.** Hardening test suite: scope & tampering, cost privacy, card-number/secrets exclusion, 7 append-only DB triggers & repo reflection checks, all 9 audit actions, concurrency races, and financial invariants
 - [x] **G.** Demo payments seed (`DemoOrdersPaymentsContributor` after Phase 4 seed) + Demo Console `POST /demo/simulate-payment` + `DEMO_MODE=false` verification + full suite
-- [ ] **H.** Frontend: Payments sidebar section (History, To verify, Refunds, COD & settlements), Order detail Payments card, Settings payment settings, Demo Console simulate-payment, Overview pending count card, Vitest tests, lint, typecheck, build
+- [x] **H.** Frontend: Payments sidebar section (History, To verify, Refunds, COD & settlements), Order detail Payments card, Settings payment settings, Demo Console simulate-payment, Overview pending count card, Vitest tests, lint, typecheck, build
 - [ ] **I.** Extend `scripts/smoke-local.ps1` & `scripts/check-live.ps1` (read-only), update docs, full clean-DB `run-tests.bat` + Spotless, local smoke run, commit, push & live check
 
 ## Completed Classes & Tests
@@ -28,8 +28,9 @@ Branch: `main`
 - **Slice E**: `PaymentHistoryRepository`, `PaymentHistoryService`, `PaymentHistoryController`; `PaymentHistoryIntegrationTest` green.
 - **Slice F**: `PaymentHardeningIntegrationTest` (default deny across all 19 Phase 5 routes, scope & tampered IDs, Jackson cost key absence, PAN non-echo/rejection, all 7 append-only triggers & repositories, all 9 audit actions, 3 financial invariant tests) + `PublicEndpointPolicyTest` — 10/10 green.
 - **Slice G**: `DemoOrdersPaymentsContributor` (`order() == 60`, seeds 12 payments across 4 methods & 3 statuses including overdue `WEBSITE_CLAIM`, cancelled prepaid order with 3 refunds + cancelled order in `/refunds/due`, COD gap > 7d, exact & short settlements, 2 mock provider rows), `DemoSimulatorController` (`paymentMode` + `POST /api/v1/demo/simulate-payment`), `DemoPaymentsIntegrationTest`, `DemoDisabledIntegrationTest`, `DemoOrdersIntegrationTest`, `OrderHardeningIntegrationTest`, `PaymentHardeningIntegrationTest` — 10/10 green.
+- **Slice H**: `frontend/src/api/payments.ts`, `OrderPaymentsCard.tsx`, `PaymentsPage.tsx` (History, To verify, Refunds, COD & settlements with live integer-paisa math), `OrderDetailPage.tsx`, `DemoConsolePage.tsx`, `HomePage.tsx`, `AppShell.tsx`, `App.tsx`, `posErrors.ts`, `validation.ts`, `StatusPill.tsx`, `Phase5.test.tsx`; `npm run lint`, `npm run typecheck`, `npm test` (20 files, 94 tests passed), and `npm run build` green.
 
 ## Open Problems
 - None.
 
-**NEXT STEP:** Finish Slice H (frontend tests `Phase5.test.tsx`, `npm run lint && npm run typecheck && npm test && npm run build`) and commit.
+**NEXT STEP:** Complete Slice I (extend `scripts/smoke-local.ps1` & `scripts/check-live.ps1`, update documentation, verify `V8` Supabase compatibility, run clean `scripts\run-tests.bat` + `spotless:check` + local smoke run, commit, push, and run `scripts\check-live.ps1`).

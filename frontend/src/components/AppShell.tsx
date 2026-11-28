@@ -133,6 +133,32 @@ export default function AppShell() {
       ],
     },
     {
+      id: 'payments',
+      label: 'Payments',
+      items: [
+        {
+          to: '/payments?tab=history',
+          label: 'Payments & history',
+          visible: can('PAYMENT_VIEW'),
+        },
+        {
+          to: '/payments?tab=pending',
+          label: 'To verify',
+          visible: can('PAYMENT_VERIFY'),
+        },
+        {
+          to: '/payments?tab=refunds',
+          label: 'Refunds',
+          visible: can('REFUND_REQUEST') || can('REFUND_APPROVE') || can('REFUND_PAY'),
+        },
+        {
+          to: '/payments?tab=cod',
+          label: 'COD & settlements',
+          visible: can('COD_SETTLEMENT_MANAGE'),
+        },
+      ],
+    },
+    {
       id: 'pos',
       label: 'Point of sale',
       items: [

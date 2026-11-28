@@ -88,6 +88,8 @@ export interface AuthStatus {
   setupRequired: boolean
   demoMode: boolean
   businessName: string
+  paymentMode?: string
+  providerCheckEnabled?: boolean
 }
 
 /**

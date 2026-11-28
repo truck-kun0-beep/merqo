@@ -30,6 +30,12 @@ const STATUS_MAP: Record<string, { label: string; tone: BadgeTone }> = {
   SHIPPED: { label: 'Shipped', tone: 'info' },
   DELIVERED: { label: 'Delivered', tone: 'success' },
   REFUSED: { label: 'Refused', tone: 'danger' },
+  PENDING: { label: 'Pending', tone: 'warning' },
+  VERIFIED: { label: 'Verified', tone: 'success' },
+  PAID: { label: 'Paid', tone: 'success' },
+  NONE: { label: 'Matched', tone: 'success' },
+  OVER: { label: 'Over', tone: 'info' },
+  SHORT: { label: 'Short', tone: 'danger' },
   UP: { label: 'Up', tone: 'success' },
   DOWN: { label: 'Down', tone: 'danger' },
 }

@@ -1116,3 +1116,79 @@ flowchart LR
 - **`RequestSignature`** computes and verifies constant-time `HMAC-SHA256(secret, timestamp + "." + rawBody)` with a fixed-`Clock` replay window (`integration.signature_window_seconds`, default `300s`).
 - **`OrderStaffService` & `OrderIntakeService`** use PostgreSQL `SELECT ... FOR UPDATE` locks (`findForUpdate` / `findByIdForUpdate`) and deterministic `variantId` reservation ordering so concurrent webhook retries and concurrent last-unit confirmations never double-create or deadlock.
 
+---
+
+## 12. Phase 5 Payments, Verification, Refunds & COD Design
+
+Phase 5 separates pure domain policy (`com.merqo.payments.domain`) from Spring services, advisory transaction locks, and pluggable payment verifiers:
+
+```mermaid
+classDiagram
+    class OrderPaymentController
+    class RefundController
+    class CodController
+    class PaymentHistoryController
+
+    class OrderPaymentService
+    class RefundService
+    class CodService
+    class PaymentHistoryService
+
+    class PaymentVerifier {
+        <<interface>>
+        +mode() String
+        +supportsProviderCheck() boolean
+        +check(method, reference, amount) VerificationOutcome
+    }
+    class ManualPaymentVerifier
+    class MockPaymentVerifier
+    class BkashPaymentVerifier
+    class PaymentVerifierRegistry
+
+    class OrderPaymentPosition
+    class RefundTransitions
+    class RefundApprovalPolicy
+    class SettlementCalculator
+    class CodGapPolicy
+    class CardNumberGuard
+    class PaymentReferenceGuard {
+        <<interface>>
+    }
+    class JpaPaymentReferenceGuard
+
+    OrderPaymentController --> OrderPaymentService
+    RefundController --> RefundService
+    CodController --> CodService
+    PaymentHistoryController --> PaymentHistoryService
+
+    OrderPaymentService --> PaymentVerifierRegistry
+    OrderPaymentService --> OrderPaymentPosition
+    OrderPaymentService --> PaymentReferenceGuard
+    OrderPaymentService --> CardNumberGuard
+    RefundService --> RefundTransitions
+    RefundService --> RefundApprovalPolicy
+    CodService --> SettlementCalculator
+    CodService --> CodGapPolicy
+
+    PaymentVerifier <|.. ManualPaymentVerifier
+    PaymentVerifier <|.. MockPaymentVerifier
+    PaymentVerifier <|.. BkashPaymentVerifier
+    PaymentVerifierRegistry --> PaymentVerifier
+    PaymentReferenceGuard <|.. JpaPaymentReferenceGuard
+```
+
+### OOP Concepts & Viva Questions (Phase 5)
+
+1. **Q: Why use the `PaymentVerifier` interface and `PaymentVerifierRegistry` instead of `if (mode.equals("mock"))` checks inside services?**  
+   **A:** Strategy + Registry pattern (Open/Closed Principle). `OrderPaymentService` calls the selected `PaymentVerifier` without knowing whether verification is manual, backed by `mock_provider_transactions`, or blocked cleanly at startup for `live` (`BkashPaymentVerifier`).
+2. **Q: Why does `JpaPaymentReferenceGuard` use `pg_advisory_xact_lock` in addition to a database unique index?**  
+   **A:** Mobile wallet TrxIDs (`BKASH`/`NAGAD`) must be globally unique across *two* separate tables (`sale_payments` for POS and non-rejected `order_payments` for online orders). A table unique index only locks one table; the transaction-scoped advisory lock serializes `(method, reference)` across both POS and Online checkouts concurrently.
+3. **Q: Why are `payment_decisions`, `refund_events`, and `order_payments` separate append-only tables instead of updating a status column on `order_payments`?**  
+   **A:** Immutable financial ledger integrity (`merqo_reject_append_only_mutation()` trigger on all 7 Phase 5 tables). Recording vs deciding stays tamper-proof, while `OrderPaymentPosition` derives `verifiedPaid`, `refundable`, `codWithCourier`, and `readyForShipment` deterministically.
+4. **Q: How are rounding errors and timezone boundaries avoided in COD settlements and gap detection?**  
+   **A:** All amounts use immutable `Money` (`BigDecimal` scale 2, `HALF_UP`), `SettlementCalculator` checks exact difference (`OVER`/`SHORT`/`NONE`) requiring a note on variance, and `CodGapPolicy` compares `LocalDate` counts using `Asia/Dhaka` (`BusinessTime.today()`) rather than UTC timestamps.
+5. **Q: How does Merqo enforce privacy for credit/debit cards across POS, orders, logs, and refunds?**  
+   **A:** `CardNumberGuard` detects 13–19 digit PAN patterns (even with spaces or hyphens) in references, payer notes, refund notes, and evidence before DB writes or audit serialization, rejecting requests with `422 CARD_NUMBER_REJECTED`.
+6. **Q: Why does `PaymentHistoryRepository` run one native SQL CTE `UNION ALL` instead of merging 5 lists in Java?**  
+   **A:** Filtering, location scoping (`PAYMENT_VIEW` + `COD_SETTLEMENT_MANAGE`), sorting, pagination (`PageResponse`), and `GET /payments/summary` totals run in a single SQL query plan so counts, totals, and pages always agree and unauthorized location/COD rows never leave PostgreSQL.
+

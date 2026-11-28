@@ -12,10 +12,12 @@ import {
   rejectRefund,
   requestOrderRefund,
   verifyOrderPayment,
+  type CourierPartner,
   type OnlinePaymentMethod,
   type OrderPaymentView,
   type PaymentDecision,
   type RefundPayoutMethod,
+  type RefundReason,
   type RefundView,
 } from '../api/payments'
 import {
@@ -44,6 +46,14 @@ import { useSession } from '../session/sessionContext'
 
 const METHODS: OnlinePaymentMethod[] = ['BKASH', 'NAGAD', 'CARD', 'BANK']
 const PAYOUT_METHODS: RefundPayoutMethod[] = ['BKASH', 'NAGAD', 'CARD', 'BANK', 'CASH']
+const REFUND_REASONS: Array<{ value: RefundReason; label: string }> = [
+  { value: 'ORDER_CANCELLED', label: 'Order cancelled' },
+  { value: 'ORDER_DECLINED', label: 'Order declined' },
+  { value: 'OVERPAYMENT', label: 'Overpayment' },
+  { value: 'CUSTOMER_REQUEST', label: 'Customer request' },
+  { value: 'OTHER', label: 'Other (note required)' },
+]
+const COURIERS: CourierPartner[] = ['STEADFAST', 'PATHAO']
 
 export function OrderPaymentsCard({ orderId }: { orderId: string }) {
   const { can } = useSession()
@@ -87,7 +97,7 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
 
   const [refundReqOpen, setRefundReqOpen] = useState(false)
   const [refundAmount, setRefundAmount] = useState('')
-  const [refundReason, setRefundReason] = useState('')
+  const [refundReason, setRefundReason] = useState<RefundReason>('ORDER_CANCELLED')
   const [refundNote, setRefundNote] = useState('')
   const [refundReqError, setRefundReqError] = useState<string | null>(null)
 
@@ -104,7 +114,7 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
   const [payError, setPayError] = useState<string | null>(null)
 
   const [codOpen, setCodOpen] = useState(false)
-  const [codCourier, setCodCourier] = useState('Steadfast')
+  const [codCourier, setCodCourier] = useState<CourierPartner>('STEADFAST')
   const [codAmount, setCodAmount] = useState('')
   const [codDate, setCodDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [codNote, setCodNote] = useState('')
@@ -160,7 +170,7 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
       toast({
         title: `Provider check: ${res.outcome}`,
         description: res.message,
-        tone: res.outcome === 'VERIFIED' ? 'success' : 'warning',
+        tone: res.outcome === 'CONFIRMED' ? 'success' : 'warning',
       })
     },
   })
@@ -394,7 +404,9 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
               variant="outline"
               onClick={() => {
                 setRefundAmount(pos.refundable)
-                setRefundReason('')
+                setRefundReason(
+                  data.orderStatus === 'DECLINED' ? 'ORDER_DECLINED' : 'ORDER_CANCELLED',
+                )
                 setRefundNote('')
                 setRefundReqError(null)
                 refundReqMutation.reset()
@@ -497,7 +509,7 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
                     </p>
                   ) : null}
                 </div>
-                {p.status === 'PENDING' && can('PAYMENT_VERIFY') ? (
+                {p.status === 'PENDING_VERIFICATION' && can('PAYMENT_VERIFY') ? (
                   <div className="flex flex-wrap gap-2">
                     {providerCheckEnabled ? (
                       <Button
@@ -713,7 +725,7 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
               />
             </FormField>
           ) : null}
-          <FormField label="Evidence / note" required={verifyDecision === 'REJECTED'}>
+          <FormField label="Evidence / note" required>
             <Textarea
               aria-label="Verification evidence"
               value={verifyEvidence}
@@ -756,14 +768,19 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
             />
           </FormField>
           <FormField label="Reason" required>
-            <Input
+            <Select
               aria-label="Refund reason"
               value={refundReason}
-              onChange={(e) => setRefundReason(e.target.value)}
-              placeholder="e.g. Order cancelled after prepayment"
-            />
+              onChange={(e) => setRefundReason(e.target.value as RefundReason)}
+            >
+              {REFUND_REASONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </Select>
           </FormField>
-          <FormField label="Note">
+          <FormField label="Note" required={refundReason === 'OTHER'}>
             <Textarea
               aria-label="Refund note"
               value={refundNote}
@@ -886,11 +903,17 @@ export function OrderPaymentsCard({ orderId }: { orderId: string }) {
       >
         <form onSubmit={submitCodCollection} className="space-y-3">
           <FormField label="Courier" required>
-            <Input
+            <Select
               aria-label="COD courier"
               value={codCourier}
-              onChange={(e) => setCodCourier(e.target.value)}
-            />
+              onChange={(e) => setCodCourier(e.target.value as CourierPartner)}
+            >
+              {COURIERS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
           </FormField>
           <FormField label="Collected amount (BDT)" required>
             <Input

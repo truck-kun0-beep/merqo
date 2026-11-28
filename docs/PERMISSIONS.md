@@ -585,4 +585,22 @@ Every Phase 3 response (`POST /pos/sales`, `GET /pos/sales`, `GET /pos/sales/{id
 | `GET /api/v1/customers/history` | `ORDER_VIEW` at `WH` | Derived order outcome counts + `NEW`/`OK`/`WATCH`/`HIGH` tier using `threshold.refusal_risk_count`. |
 | `GET/POST /api/v1/demo/simulator*` | Owner only (`DEMO_MODE=true`) | Returns `404` when `DEMO_MODE=false`; `403` for non-owners. |
 
+---
+
+## 14. Phase 5 Payments, Refunds, COD & Finance History Permissions
+
+Note on seeded role template: `V3__seed_permission_templates.sql` gives `FINANCE_STAFF` `PAYMENT_VIEW`, `PAYMENT_VERIFY`, and `COD_SETTLEMENT_MANAGE` (plus `AUDIT_VIEW`). Operations requiring `PAYMENT_RECORD`, `REFUND_REQUEST`, `REFUND_APPROVE`, or `REFUND_PAY` are held by `OWNER` or granted via templates / overrides.
+
+| Action / Endpoint | Permission required | Scope & extra rules |
+| --- | --- | --- |
+| `GET /api/v1/orders/{id}/payments` | `PAYMENT_VIEW`, `PAYMENT_RECORD`, `PAYMENT_VERIFY`, `REFUND_REQUEST`, `REFUND_APPROVE`, `REFUND_PAY`, or `COD_SETTLEMENT_MANAGE` at `WH` | Outside `WH` (e.g. DM manager/cashier) returns `404`; lacking any listed permission returns `403`. |
+| `GET /orders/{id}/payments/claim-prefill`, `POST /orders/{id}/payments` | `PAYMENT_RECORD` at `WH` | Validates card-number PAN exclusion (`422 CARD_NUMBER_REJECTED`), cross-channel TrxID uniqueness (`409 DUPLICATE_REFERENCE`), and expected prepayment cap (`422 PAYMENT_EXCEEDS_TOTAL`). |
+| `GET /api/v1/payments/pending`, `POST /api/v1/payments/{id}/verify`, `POST /api/v1/payments/{id}/check` | `PAYMENT_VERIFY` at `WH` | Respects `payments.require_separate_verifier` (`403 SELF_VERIFICATION_NOT_ALLOWED` for non-owner self-verify); `/check` requires `PAYMENT_MODE=mock` (`503 VERIFIER_UNAVAILABLE` in `manual` mode). |
+| `POST /api/v1/orders/{id}/refunds` | `REFUND_REQUEST` at `WH` | Capped at `refundable = verifiedPaid - refundReserved - refundedPaid` (`422 REFUND_EXCEEDS_PAID`). |
+| `POST /api/v1/refunds/{id}/approve`, `POST /api/v1/refunds/{id}/reject` | `REFUND_APPROVE` at `WH` | Non-owner cannot approve/reject their own request (`403 SELF_APPROVAL_NOT_ALLOWED`). |
+| `POST /api/v1/refunds/{id}/pay` | `REFUND_PAY` at `WH` | `CASH` requires note and blank reference; electronic channels validate format + no PAN. |
+| `GET /api/v1/refunds`, `GET /api/v1/refunds/due` | `PAYMENT_VIEW`, `REFUND_REQUEST`, `REFUND_APPROVE`, or `REFUND_PAY` at `WH` | Outside `WH` returns `404`; unpermitted returns `403`. |
+| `POST /orders/{id}/cod-collections`, `GET /cod/outstanding`, `GET/POST /cod/settlements*` | `COD_SETTLEMENT_MANAGE` at `WH` | Variance (`OVER` / `SHORT`) requires explanatory note (`422 SETTLEMENT_MISMATCH`). |
+| `GET /api/v1/payments/history`, `GET /api/v1/payments/summary` | `PAYMENT_VIEW` at requested location(s) | Scopes POS rows to `PAYMENT_VIEW` locations, online order rows to `WH` when held at `WH`, and COD settlement rows only when `COD_SETTLEMENT_MANAGE` is held at `WH`. Never exposes cost/margin keys. |
+
 

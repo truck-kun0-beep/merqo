@@ -326,18 +326,23 @@ export const verifyPaymentFormSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.decision === 'VERIFIED') {
-      if (!data.confirmedAmount || Number.isNaN(Number(data.confirmedAmount)) || Number(data.confirmedAmount) <= 0) {
+      if (
+        !data.confirmedAmount ||
+        Number.isNaN(Number(data.confirmedAmount)) ||
+        Number(data.confirmedAmount) <= 0
+      ) {
         ctx.addIssue({
           code: 'custom',
           path: ['confirmedAmount'],
           message: 'Enter the confirmed payment amount.',
         })
       }
-    } else if (!data.evidence.trim()) {
+    }
+    if (!data.evidence.trim()) {
       ctx.addIssue({
         code: 'custom',
         path: ['evidence'],
-        message: 'Rejection reason or evidence is required when rejecting a payment.',
+        message: 'Verification or rejection evidence is required.',
       })
     }
     if (containsCardNumberLikeText(data.evidence)) {
@@ -357,8 +362,18 @@ export const refundRequestFormSchema = z
       .refine((v) => !Number.isNaN(Number(v)) && Number(v) > 0, {
         message: 'Refund amount must be greater than zero.',
       }),
-    reason: z.string().trim().min(1, 'Refund reason is required.'),
+    reason: z.enum([
+      'ORDER_CANCELLED',
+      'ORDER_DECLINED',
+      'OVERPAYMENT',
+      'CUSTOMER_REQUEST',
+      'OTHER',
+    ]),
     note: z.string().trim().optional(),
+  })
+  .refine((d) => d.reason !== 'OTHER' || Boolean(d.note?.trim()), {
+    path: ['note'],
+    message: 'An explanatory note is required when reason is OTHER.',
   })
   .refine((d) => !d.note || !containsCardNumberLikeText(d.note), {
     path: ['note'],

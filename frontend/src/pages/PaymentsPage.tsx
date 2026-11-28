@@ -27,6 +27,7 @@ import {
   type PendingPaymentView,
   type RefundDueRowView,
   type RefundPayoutMethod,
+  type RefundReason,
   type RefundStatus,
   type RefundView,
   type SettlementDetailView,
@@ -486,7 +487,7 @@ function PendingVerifyTab() {
       toast({
         title: `Provider check: ${res.outcome}`,
         description: res.message,
-        tone: res.outcome === 'VERIFIED' ? 'success' : 'warning',
+        tone: res.outcome === 'CONFIRMED' ? 'success' : 'warning',
       })
     },
   })
@@ -636,7 +637,7 @@ function PendingVerifyTab() {
               />
             </FormField>
           ) : null}
-          <FormField label="Evidence / note" required={decision === 'REJECTED'}>
+          <FormField label="Evidence / note" required>
             <Textarea
               aria-label="Evidence"
               value={evidence}
@@ -673,7 +674,7 @@ function RefundsTab() {
   const [statusFilter, setStatusFilter] = useState<RefundStatus | ''>('')
   const [reqTarget, setReqTarget] = useState<RefundDueRowView | null>(null)
   const [reqAmount, setReqAmount] = useState('')
-  const [reqReason, setReqReason] = useState('')
+  const [reqReason, setReqReason] = useState<RefundReason>('ORDER_CANCELLED')
   const [reqNote, setReqNote] = useState('')
   const [reqError, setReqError] = useState<string | null>(null)
 
@@ -819,7 +820,9 @@ function RefundsTab() {
                     onClick={() => {
                       setReqTarget(d)
                       setReqAmount(d.refundable)
-                      setReqReason('Cancelled / declined order refund')
+                      setReqReason(
+                        d.orderStatus === 'DECLINED' ? 'ORDER_DECLINED' : 'ORDER_CANCELLED',
+                      )
                       setReqNote('')
                       setReqError(null)
                       reqMutation.reset()
@@ -949,13 +952,19 @@ function RefundsTab() {
             />
           </FormField>
           <FormField label="Reason" required>
-            <Input
+            <Select
               aria-label="Refund reason"
               value={reqReason}
-              onChange={(e) => setReqReason(e.target.value)}
-            />
+              onChange={(e) => setReqReason(e.target.value as RefundReason)}
+            >
+              <option value="ORDER_CANCELLED">Order cancelled</option>
+              <option value="ORDER_DECLINED">Order declined</option>
+              <option value="OVERPAYMENT">Overpayment</option>
+              <option value="CUSTOMER_REQUEST">Customer request</option>
+              <option value="OTHER">Other (note required)</option>
+            </Select>
           </FormField>
-          <FormField label="Note">
+          <FormField label="Note" required={reqReason === 'OTHER'}>
             <Textarea value={reqNote} onChange={(e) => setReqNote(e.target.value)} />
           </FormField>
           {reqError ? (
@@ -1075,7 +1084,7 @@ function CodTab() {
   })
 
   const [settleOpen, setSettleOpen] = useState(false)
-  const [courier, setCourier] = useState('Steadfast')
+  const [courier, setCourier] = useState('STEADFAST')
   const [reference, setReference] = useState('')
   const [receivedOn, setReceivedOn] = useState(() => new Date().toISOString().slice(0, 10))
   const [receiveMethod, setReceiveMethod] = useState('BANK')
@@ -1141,7 +1150,7 @@ function CodTab() {
   function openSettleModal(preselectOrder?: CodOutstandingOrderView) {
     const initial: Record<string, { selected: boolean; gross: string; fee: string }> = {}
     if (preselectOrder) {
-      setCourier(preselectOrder.courier ?? 'Steadfast')
+      setCourier(preselectOrder.courier ?? 'STEADFAST')
       initial[preselectOrder.orderId] = {
         selected: true,
         gross: preselectOrder.withCourier,
@@ -1329,11 +1338,14 @@ function CodTab() {
         <form onSubmit={submitSettlement} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-4">
             <FormField label="Courier" required>
-              <Input
+              <Select
                 aria-label="Settlement courier"
                 value={courier}
                 onChange={(e) => setCourier(e.target.value)}
-              />
+              >
+                <option value="STEADFAST">STEADFAST</option>
+                <option value="PATHAO">PATHAO</option>
+              </Select>
             </FormField>
             <FormField label="Reference" required>
               <Input

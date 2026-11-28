@@ -328,8 +328,13 @@ PostgreSQL is not running. Check `Get-Service postgresql*` and look at the
 
 Sign in on <http://localhost:5173>. With `DEMO_MODE=true` the login page
 shows the demo accounts; one click signs you in. The demo locations, the demo
-accounts, the demo catalogue, Phase 3 POS history, and Phase 4 demo webshop
-orders are written by the backend itself at every start.
+accounts, the demo catalogue, Phase 3 POS history, Phase 4 demo webshop
+orders, and Phase 5 payments, refunds, and COD settlements are seeded on startup.
+
+To test Phase 5 mock payment verification locally:
+- Start the backend with `PAYMENT_MODE=mock` (the default `PAYMENT_MODE=manual` disables automatic provider checks).
+- Use the **Demo Console** (`Simulate provider payment` / `POST /api/v1/demo/simulate-payment`) or seeded overdue claims, then verify or run **Check with provider** from an order or **Payments → To verify**.
+- Use `scripts\smoke-local.ps1` to verify the full Phase 4–5 HTTP workflow end-to-end against a local JAR.
 
 To simulate external website orders locally against a running backend without extra tools:
 

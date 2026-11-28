@@ -595,6 +595,39 @@ if (-not $script:ProbeUserId) {
 }
 
 # ---------------------------------------------------------------------------
+# Step 8b - Read-only Phase 5 payments, verification queue, and COD endpoints
+# ---------------------------------------------------------------------------
+Write-Head 'Step 8b - Phase 5 payments endpoints (read-only)'
+
+if (-not $script:SignedIn) {
+    Write-Fail 'cannot check Phase 5 payments endpoints because login did not succeed'
+} else {
+    Invoke-Check -Uri ($FrontendUrl + '/api/v1/payments/history?page=0&size=5') -Session $script:StrictSession
+    if ($script:Status -eq 200) {
+        Write-Pass 'GET /payments/history worked (200)'
+    } else {
+        Write-Fail ('GET /payments/history answered ' + $script:Status)
+        Write-Info $script:Body
+    }
+
+    Invoke-Check -Uri ($FrontendUrl + '/api/v1/payments/pending') -Session $script:StrictSession
+    if ($script:Status -eq 200) {
+        Write-Pass 'GET /payments/pending worked (200)'
+    } else {
+        Write-Fail ('GET /payments/pending answered ' + $script:Status)
+        Write-Info $script:Body
+    }
+
+    Invoke-Check -Uri ($FrontendUrl + '/api/v1/cod/outstanding') -Session $script:StrictSession
+    if ($script:Status -eq 200) {
+        Write-Pass 'GET /cod/outstanding worked (200)'
+    } else {
+        Write-Fail ('GET /cod/outstanding answered ' + $script:Status)
+        Write-Info $script:Body
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Step 9 - the sign out works. This is the third POST.
 # ---------------------------------------------------------------------------
 Write-Head 'Step 9 - the sign out works'

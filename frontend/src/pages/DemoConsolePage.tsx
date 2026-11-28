@@ -37,7 +37,7 @@ export default function DemoConsolePage() {
   const [payRef, setPayRef] = useState('SIMBK9901')
   const [payAmount, setPayAmount] = useState('810.00')
   const [paySender, setPaySender] = useState('01700000099')
-  const [payVariant, setPayVariant] = useState<'MATCHING' | 'MISMATCH' | 'NOT_FOUND'>('MATCHING')
+  const [payVariant, setPayVariant] = useState<'MATCH' | 'WRONG_AMOUNT' | 'ALREADY_CLAIMED'>('MATCH')
   const [lastPaymentResult, setLastPaymentResult] = useState<SimulatePaymentResponse | null>(null)
 
   const simulateMutation = useMutation({
@@ -245,12 +245,12 @@ export default function DemoConsolePage() {
               aria-label="Simulated payment variant"
               value={payVariant}
               onChange={(e) =>
-                setPayVariant(e.target.value as 'MATCHING' | 'MISMATCH' | 'NOT_FOUND')
+                setPayVariant(e.target.value as 'MATCH' | 'WRONG_AMOUNT' | 'ALREADY_CLAIMED')
               }
             >
-              <option value="MATCHING">MATCHING</option>
-              <option value="MISMATCH">MISMATCH</option>
-              <option value="NOT_FOUND">NOT_FOUND</option>
+              <option value="MATCH">MATCH</option>
+              <option value="WRONG_AMOUNT">WRONG_AMOUNT</option>
+              <option value="ALREADY_CLAIMED">ALREADY_CLAIMED</option>
             </Select>
           </FormField>
         </div>

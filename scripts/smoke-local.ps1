@@ -87,6 +87,7 @@ try {
         $env:SERVER_PORT = "$port"
         $env:DEMO_MODE = "true"
         $env:WEBSITE_MODE = "mock"
+        $env:PAYMENT_MODE = "mock"
         if ($DatabaseUrl) {
             $env:DATABASE_URL = $DatabaseUrl
         }
@@ -212,6 +213,109 @@ try {
     # 9. Disable test client
     $disResp = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/integration/clients/$($createdKey.Body.client.id)/disable" -Session $ownerSession
     Assert-Step "Disable smoke integration key" ($disResp.Status -eq 200 -and $disResp.Body.active -eq $false)
+
+    # 10. Phase 5: Simulate provider payment, record advance, check with mock provider, cancel, refund lifecycle
+    $prepaidPayload = @{
+        customerName  = "Prepaid Smoke Buyer"
+        phone         = "01712345679"
+        address       = "Uttara Sector 10"
+        district      = "Dhaka"
+        lines         = @(@{ sku = "TE-100-BLK"; quantity = 1 })
+        shippingFee   = "60.00"
+        discountTotal = "0.00"
+        paymentMode   = "FULL_PREPAID"
+        advanceAmount = "810.00"
+        confirmNow    = $true
+    } | ConvertTo-Json -Depth 4 -Compress
+    $prepaidOrder = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/orders/manual" -Session $ownerSession -Body $prepaidPayload
+    Assert-Step "Create prepaid manual order for payment smoke" ($prepaidOrder.Status -eq 201 -and $prepaidOrder.Body.readyForShipment -eq $false) "($($prepaidOrder.Status))"
+    $prepaidId = $prepaidOrder.Body.id
+    $prepaidTotal = [string]$prepaidOrder.Body.total
+
+    $simTrx = "SMKBK" + ([guid]::NewGuid().ToString("N").Substring(0, 6).ToUpperInvariant())
+    $simPayBody = @{
+        method     = "BKASH"
+        reference  = $simTrx
+        amount     = $prepaidTotal
+        senderHint = "01700000001"
+        variant    = "MATCH"
+    } | ConvertTo-Json -Compress
+    $simPay = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/demo/simulate-payment" -Session $ownerSession -Body $simPayBody
+    Assert-Step "Seed mock provider transaction" ($simPay.Status -eq 201) "($($simPay.Status))"
+
+    $recPayBody = @{
+        method    = "BKASH"
+        amount    = $prepaidTotal
+        reference = $simTrx
+        payerNote = "Smoke prepaid transfer"
+    } | ConvertTo-Json -Compress
+    $recPay = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/orders/$prepaidId/payments" -Session $ownerSession -Body $recPayBody
+    Assert-Step "Record order payment (PENDING_VERIFICATION)" ($recPay.Status -eq 201 -and $recPay.Body.status -eq "PENDING_VERIFICATION") "($($recPay.Status))"
+    $payId = $recPay.Body.id
+
+    $chkPay = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/payments/$payId/check" -Session $ownerSession -Body '{}'
+    Assert-Step "Mock provider verifies payment" ($chkPay.Status -eq 200 -and $chkPay.Body.outcome -eq "CONFIRMED" -and $chkPay.Body.payment.status -eq "VERIFIED") "($($chkPay.Status))"
+
+    $afterPrepayOrder = Invoke-ApiJson -Method "Get" -Url "$base/api/v1/orders/$prepaidId" -Session $ownerSession
+    Assert-Step "Confirmed prepaid order becomes readyForShipment" ($afterPrepayOrder.Status -eq 200 -and $afterPrepayOrder.Body.readyForShipment -eq $true)
+
+    $cancelPrepaid = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/orders/$prepaidId/cancel" -Session $ownerSession -Body '{"reason":"CUSTOMER_REQUESTED"}'
+    Assert-Step "Cancel verified prepaid order" ($cancelPrepaid.Status -eq 200)
+
+    $reqRefund = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/orders/$prepaidId/refunds" -Session $ownerSession -Body (@{ amount = $prepaidTotal; reason = "ORDER_CANCELLED"; note = "Smoke cancel refund" } | ConvertTo-Json -Compress)
+    Assert-Step "Request refund" ($reqRefund.Status -eq 201 -and $reqRefund.Body.status -eq "REQUESTED") "($($reqRefund.Status))"
+    $refundId = $reqRefund.Body.id
+
+    $appRefund = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/refunds/$refundId/approve" -Session $ownerSession -Body '{"note":"Owner approved smoke refund"}'
+    Assert-Step "Approve refund" ($appRefund.Status -eq 200 -and $appRefund.Body.status -eq "APPROVED")
+
+    $payRefund = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/refunds/$refundId/pay" -Session $ownerSession -Body '{"payoutMethod":"CASH","note":"Cash payout smoke"}'
+    Assert-Step "Pay refund (PAID)" ($payRefund.Status -eq 200 -and $payRefund.Body.status -eq "PAID")
+
+    # 11. Phase 5: COD collection + exact settlement + Payments history & summary
+    $codOrderPayload = @{
+        customerName  = "COD Smoke Buyer"
+        phone         = "01812345680"
+        address       = "Mirpur DOHS"
+        district      = "Dhaka"
+        lines         = @(@{ sku = "TE-100-BLK"; quantity = 1 })
+        shippingFee   = "60.00"
+        discountTotal = "0.00"
+        paymentMode   = "COD"
+        confirmNow    = $true
+    } | ConvertTo-Json -Depth 4 -Compress
+    $codOrder = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/orders/manual" -Session $ownerSession -Body $codOrderPayload
+    Assert-Step "Create confirmed COD order for settlement smoke" ($codOrder.Status -eq 201)
+    $codOrderId = $codOrder.Body.id
+    $codGross = [decimal]$codOrder.Body.codAmount
+    $codFee = [decimal]20.00
+    $codNet = ($codGross - $codFee).ToString("0.00", [System.Globalization.CultureInfo]::InvariantCulture)
+    $codGrossStr = $codGross.ToString("0.00", [System.Globalization.CultureInfo]::InvariantCulture)
+
+    $codColBody = @{
+        courier     = "STEADFAST"
+        amount      = $codGrossStr
+        collectedOn = (Get-Date -Format "yyyy-MM-dd")
+        note        = "Smoke COD collection"
+    } | ConvertTo-Json -Compress
+    $codCol = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/orders/$codOrderId/cod-collections" -Session $ownerSession -Body $codColBody
+    Assert-Step "Record COD collection" ($codCol.Status -eq 201) "($($codCol.Status))"
+
+    $setRef = "STF-SMK-" + ([guid]::NewGuid().ToString("N").Substring(0, 6).ToUpperInvariant())
+    $settleBody = @{
+        courier        = "STEADFAST"
+        reference      = $setRef
+        receivedOn     = (Get-Date -Format "yyyy-MM-dd")
+        receiveMethod  = "BANK"
+        amountReceived = $codNet
+        lines          = @(@{ orderId = $codOrderId; codCollectedAmount = $codGrossStr; fee = "20.00" })
+    } | ConvertTo-Json -Depth 4 -Compress
+    $settleResp = Invoke-ApiJson -Method "Post" -Url "$base/api/v1/cod/settlements" -Session $ownerSession -Body $settleBody
+    Assert-Step "Create exact courier settlement (NONE)" ($settleResp.Status -eq 201 -and $settleResp.Body.differenceKind -eq "NONE")
+
+    $payHist = Invoke-ApiJson -Method "Get" -Url "$base/api/v1/payments/history?page=0&size=10" -Session $ownerSession
+    $paySum = Invoke-ApiJson -Method "Get" -Url "$base/api/v1/payments/summary" -Session $ownerSession
+    Assert-Step "Payments history & summary align" ($payHist.Status -eq 200 -and $paySum.Status -eq 200 -and $payHist.Body.totalItems -eq $paySum.Body.totalCount)
 
     Write-Host ""
     Write-Host ("All {0} local smoke checks passed." -f $passed) -ForegroundColor Cyan

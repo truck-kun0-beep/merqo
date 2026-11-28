@@ -6,13 +6,22 @@ export type OnlinePaymentMethod = 'BKASH' | 'NAGAD' | 'CARD' | 'BANK'
 
 export type RefundPayoutMethod = OnlinePaymentMethod | 'CASH'
 
-export type PaymentStatus = 'PENDING' | 'VERIFIED' | 'REJECTED'
+export type PaymentStatus = 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED'
 
 export type PaymentDecision = 'VERIFIED' | 'REJECTED'
 
-export type PaymentSource = 'STAFF_RECORDED' | 'WEBSITE_CLAIM'
+export type PaymentSource = 'STAFF_ENTERED' | 'WEBSITE_CLAIM'
 
-export type DeciderKind = 'STAFF_MANUAL' | 'PROVIDER_MOCK' | 'PROVIDER_LIVE'
+export type RefundReason =
+  | 'ORDER_CANCELLED'
+  | 'ORDER_DECLINED'
+  | 'OVERPAYMENT'
+  | 'CUSTOMER_REQUEST'
+  | 'OTHER'
+
+export type CourierPartner = 'PATHAO' | 'STEADFAST'
+
+export type DeciderKind = string
 
 export type RefundStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'PAID'
 
@@ -94,7 +103,7 @@ export interface PendingPaymentView {
 }
 
 export interface ProviderCheckResponse {
-  outcome: 'VERIFIED' | 'REJECTED' | 'NOT_FOUND' | 'AMOUNT_MISMATCH' | 'UNAVAILABLE' | string
+  outcome: 'CONFIRMED' | 'NOT_FOUND' | 'AMOUNT_MISMATCH' | 'ALREADY_CLAIMED' | 'UNAVAILABLE' | string
   message: string
   providerReference: string | null
   payment: OrderPaymentView
@@ -473,7 +482,7 @@ export function simulateDemoPayment(body: {
   reference: string
   amount: string
   senderHint?: string
-  variant?: 'MATCHING' | 'MISMATCH' | 'NOT_FOUND'
+  variant?: 'MATCH' | 'WRONG_AMOUNT' | 'ALREADY_CLAIMED'
 }): Promise<SimulatePaymentResponse> {
   return apiRequest<SimulatePaymentResponse>('/demo/simulate-payment', {
     method: 'POST',

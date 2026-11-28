@@ -657,3 +657,12 @@ the prompts that need them arrive.
 - **Warehouse soft holds vs hard reservations:** unconfirmed orders (`PENDING_CONFIRMATION`, `FOLLOW_UP`) contribute derived soft holds via `OrderSoftHoldReader` (no mutable balance column); confirming reserves hard stock in `inventory_balances.reserved` all-or-nothing inside the transaction.
 - **Append-only order logs:** `order_status_history` and `order_call_logs` reuse PostgreSQL trigger `merqo_reject_append_only_mutation()`.
 
+---
+
+## 12. Phase 5 Payments, Verification, Refunds & COD Isolation
+
+- **Pluggable verification modes (`PAYMENT_MODE`):** `PaymentVerifierRegistry` dispatches on `MERQO_PAYMENT_MODE` / `PAYMENT_MODE` (`manual` default, `mock` for simulated provider checks against `mock_provider_transactions`, and fail-fast startup rejection for unimplemented `live` mode in `BkashPaymentVerifier`).
+- **System-wide TrxID guard (`JpaPaymentReferenceGuard`):** acquires a PostgreSQL transaction-scoped advisory lock (`pg_advisory_xact_lock(hashtext(method || ':' || reference))`) and checks both POS `sale_payments` and non-rejected `order_payments` (`BKASH`/`NAGAD`), plus a DB partial unique index (`uq_order_payments_active_trx_id`). Rejecting a payment immediately releases its TrxID.
+- **Strict WH scope vs read-only finance reporting:** payment recording, verification, refunds, and COD tracking require warehouse scope (`404` for DM branch staff/managers) plus action permissions; read-only `/payments/history` and `/payments/summary` enforce `PAYMENT_VIEW` locations and `COD_SETTLEMENT_MANAGE` directly inside the PostgreSQL CTE `UNION ALL` query.
+- **Append-only Phase 5 ledger tables (`V8`):** all 7 ledger tables (`order_payments`, `payment_decisions`, `refund_requests`, `refund_events`, `cod_collections`, `courier_settlements`, `courier_settlement_lines`) reuse `merqo_reject_append_only_mutation()`. `CardNumberGuard` rejects 13–19 digit PANs across every input before persistence or logging.
+

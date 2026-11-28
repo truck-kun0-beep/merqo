@@ -167,6 +167,14 @@ describe('Phase 5 Payments, Refunds, COD & Finance UI', () => {
 
     expect(
       verifyPaymentFormSchema.safeParse({
+        decision: 'VERIFIED',
+        confirmedAmount: '300',
+        evidence: '',
+      }).success,
+    ).toBe(false)
+
+    expect(
+      verifyPaymentFormSchema.safeParse({
         decision: 'REJECTED',
         evidence: '',
       }).success,
@@ -204,7 +212,7 @@ describe('Phase 5 Payments, Refunds, COD & Finance UI', () => {
         recordedBy: 'u-owner',
         recordedByUsername: 'owner',
         recordedAt: '2026-11-28T06:05:00Z',
-        status: 'PENDING',
+        status: 'PENDING_VERIFICATION',
         decision: null,
       },
     ]
@@ -265,7 +273,7 @@ describe('Phase 5 Payments, Refunds, COD & Finance UI', () => {
         ]
         return {
           body: {
-            outcome: 'VERIFIED',
+            outcome: 'CONFIRMED',
             message: 'Verified via mock provider.',
             providerReference: 'MOCK-BK-1',
             payment: paymentsList[0],
@@ -292,7 +300,8 @@ describe('Phase 5 Payments, Refunds, COD & Finance UI', () => {
             position: {
               requiredPrepayment: '300.00',
               verifiedPaid: paymentsList[0].status === 'VERIFIED' ? '300.00' : '0.00',
-              pendingPaid: paymentsList[0].status === 'PENDING' ? '300.00' : '0.00',
+              pendingPaid:
+                paymentsList[0].status === 'PENDING_VERIFICATION' ? '300.00' : '0.00',
               rejectedPaid: '0.00',
               refundedPaid: '0.00',
               refundReserved: '0.00',
@@ -467,7 +476,7 @@ describe('Phase 5 Payments, Refunds, COD & Finance UI', () => {
             gapThresholdDays: 7,
             courierTotals: [
               {
-                courier: 'Steadfast',
+                courier: 'STEADFAST',
                 orderCount: 1,
                 expected: '760.00',
                 collected: '760.00',
@@ -482,7 +491,7 @@ describe('Phase 5 Payments, Refunds, COD & Finance UI', () => {
                 orderId: 'ord-cod-1',
                 orderNumber: 'ORD-000701',
                 customerName: 'Tariq Aziz',
-                courier: 'Steadfast',
+                courier: 'STEADFAST',
                 earliestCollectionDate: '2026-11-18',
                 expected: '760.00',
                 collected: '760.00',
@@ -642,7 +651,7 @@ describe('Phase 5 Payments, Refunds, COD & Finance UI', () => {
             reference: 'SIMBK9901',
             amount: '810.00',
             senderHint: '01700000099',
-            variant: 'MATCHING',
+            variant: 'MATCH',
             alreadyClaimed: false,
           },
         }

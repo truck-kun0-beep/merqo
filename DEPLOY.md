@@ -136,6 +136,10 @@ jdbc:postgresql://aws-0-REGION.pooler.supabase.com:5432/postgres
    > it sits unused for eight hours and it lives for twelve hours in total.
    > Change `SESSION_IDLE_TIMEOUT_MINUTES` and
    > `SESSION_ABSOLUTE_TIMEOUT_MINUTES` only if the shop wants other values.
+   > `PAYMENT_MODE` defaults to `manual` if omitted; set `PAYMENT_MODE=mock` in
+   > demo environments to enable `Check with provider` against the demo
+   > simulator. Do not set `PAYMENT_MODE=live` until real gateway credentials
+   > exist (startup fails fast).
 
 6. Open **Advanced** and set:
    - **Health Check Path:** `/api/v1/health/ping`

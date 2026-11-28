@@ -344,3 +344,23 @@ In production (`prod` profile), if any rows exist in `integration_clients`, you 
 - Ensure your clock is synchronized (default allowed replay window is ±300 seconds, configured via `integration.signature_window_seconds`).
 - Compute `HMAC-SHA256(secret, timestamp + "." + rawRequestBody)` over the exact raw request bytes (or empty string `""` for `GET` requests).
 - Do **not** include browser session cookies (`MERQO_SESSION`) on `/integration/v1/**` calls, and do **not** send `X-Merqo-Key` headers on `/api/v1/**` staff endpoints.
+
+---
+
+## 8. Payments, Verification, Refunds & COD
+
+### Startup fails because `PAYMENT_MODE=live` is not implemented
+
+Set `PAYMENT_MODE=manual` (default for production without direct gateway credentials) or `PAYMENT_MODE=mock` (demo/testing with `mock_provider_transactions`). Live bKash/Nagad gateway integration is reserved behind `PaymentVerifier` (`BkashPaymentVerifier`) and intentionally fails closed if enabled prematurely.
+
+### `Check with provider` returns `503 VERIFIER_UNAVAILABLE`
+
+`POST /api/v1/payments/{id}/check` only runs when `PAYMENT_MODE=mock` (and `GET /api/v1/auth/status` returns `providerCheckEnabled: true`). In `manual` mode, use **Verify / Reject** (`POST /api/v1/payments/{id}/verify`) with manual statement/SMS evidence.
+
+### `409 DUPLICATE_REFERENCE` on an online order or POS checkout
+
+Non-rejected bKash and Nagad TrxIDs are unique system-wide across both POS `sale_payments` and online `order_payments`. If a website claim was entered against the wrong order or mistyped, verify whether a **Pending** payment exists under **Payments → To verify** — rejecting a pending claim releases its TrxID immediately.
+
+### `403 SELF_VERIFICATION_NOT_ALLOWED` or `403 SELF_APPROVAL_NOT_ALLOWED`
+
+Non-owners cannot approve or reject their own refund requests, and when `payments.require_separate_verifier` is enabled in **Settings → Thresholds**, non-owners cannot verify payments they recorded themselves. Ask a peer verifier or the owner to complete the second step.

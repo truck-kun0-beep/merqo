@@ -635,3 +635,43 @@ scripts now report the same thing about the same deployment.
 
 **Reason:** unconfirmed website orders are frequently declined or unreachable; deriving soft holds avoids drift on balance rows while preventing double-selling across concurrent shoppers.
 
+---
+
+## A45 - Default `PAYMENT_MODE=manual`, test `mock`, and fail-fast `live` stub
+
+**Decision:** `application.yml` defaults `PAYMENT_MODE` to `manual`, `application-test.yml` uses `${PAYMENT_MODE:mock}`, and `PaymentVerifierRegistry` throws `IllegalStateException` at startup if `PAYMENT_MODE=live` is configured before real bKash/Nagad credentials arrive. `GET /api/v1/auth/status` returns `paymentMode` and `providerCheckEnabled`.
+
+**Reason:** a shop starts safely without external gateway secrets while keeping the verification boundary replaceable behind `PaymentVerifier`.
+
+---
+
+## A46 - System-wide TrxID lock across POS and Online orders
+
+**Decision:** `JpaPaymentReferenceGuard` serializes `(method, normalizedReference)` per database transaction via `pg_advisory_xact_lock(hashtext(...))` and queries both `sale_payments` and non-rejected `order_payments` (`BKASH`/`NAGAD`), backed by partial unique index `uq_order_payments_active_trx_id`. Calling `SaleService` invokes this shared guard before writing POS mobile wallet payments.
+
+**Reason:** row-level unique indexes alone only protect one table; the advisory lock eliminates race conditions where the same TrxID is submitted concurrently to POS and online orders, while letting `REJECTED` order payments free the reference.
+
+---
+
+## A47 - Append-only decisions/events and derived payment position
+
+**Decision:** `order_payments` rows are never updated when verified or rejected; decisions live in append-only `payment_decisions`, refunds derive current status from `refund_events` (`RefundRequest` / `RefundEvent`), and `OrderPaymentPositionCalculator` derives `verifiedPaid`, `shortfall`, `refundable`, `codWithCourier`, `readyForShipment`, and `refundDue` from immutable rows.
+
+**Reason:** keeps all 7 Phase 5 ledger tables under PostgreSQL `merqo_reject_append_only_mutation()` triggers and prevents balance drift.
+
+---
+
+## A48 - Seeded `FINANCE_STAFF` permissions vs Phase 5 dual-control rules
+
+**Decision:** `V3__seed_permission_templates.sql` grants `FINANCE_STAFF` `PAYMENT_VIEW`, `PAYMENT_VERIFY`, and `COD_SETTLEMENT_MANAGE` at assigned locations (`WH`). Additional permissions (`PAYMENT_RECORD`, `REFUND_REQUEST`, `REFUND_APPROVE`, `REFUND_PAY`) are granted explicitly via owner templates or `user_permission_overrides`. Non-owner staff cannot self-approve refunds (`SELF_APPROVAL_NOT_ALLOWED`) and cannot self-verify payments when `payments.require_separate_verifier=true`.
+
+**Reason:** preserves applied `V3` migration untouched while enforcing segregation of duties.
+
+---
+
+## A49 - SQL CTE `UNION ALL` for Payments & History with explicit scope booleans
+
+**Decision:** `PaymentHistoryRepository` executes one native SQL CTE combining `sale_payments`, `sale_returns`, `order_payments`, paid `refund_requests`, and `courier_settlements`, passing explicit `Boolean` flags and non-null empty filter strings alongside a single `BigDecimal` `MIN`/`MAX` bound handling.
+
+**Reason:** ensures pagination (`page`, `size`) and `GET /payments/summary` match identically in SQL with PostgreSQL JDBC parameter typing safety.
+

@@ -47,7 +47,11 @@ class PublicEndpointPolicyTest {
                     "/api/v1/audit-logs",
                     "/api/v1/assignments",
                     "/api/v1/permissions",
-                    "/api/v1/permission-templates");
+                    "/api/v1/permission-templates",
+                    "/api/v1/integration",
+                    "/api/v1/orders",
+                    "/api/v1/customers",
+                    "/integration/v1");
 
     @Autowired
     @Qualifier("requestMappingHandlerMapping")

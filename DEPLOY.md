@@ -124,6 +124,7 @@ jdbc:postgresql://aws-0-REGION.pooler.supabase.com:5432/postgres
    | `PAYMENT_MODE` | `mock` |
    | `WEBSITE_MODE` | `mock` |
    | `LLM_MODE` | `mock` |
+   | `INTEGRATION_SECRET_KEY` | strong 32+ character secret for encrypting integration API keys |
 
    > `CORS_ORIGINS` needs the final Pages URL. If you do not have it yet,
    > leave the value empty for the first deploy and add it in step 5. The

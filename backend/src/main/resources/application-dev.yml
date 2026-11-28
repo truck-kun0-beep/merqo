@@ -17,3 +17,5 @@ logging:
 
 merqo:
   demo-mode: ${DEMO_MODE:true}
+  integration:
+    secret-key: ${INTEGRATION_SECRET_KEY:merqo-dev-test-integration-secret-key-32bytes!}

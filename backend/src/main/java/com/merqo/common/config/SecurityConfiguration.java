@@ -1,19 +1,28 @@
 package com.merqo.common.config;
 
+import java.time.Clock;
 import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 import com.merqo.access.PermissionResolver;
+import com.merqo.integration.IntegrationAuthFilter;
+import com.merqo.integration.IntegrationClientRepository;
+import com.merqo.integration.IntegrationRateLimiter;
+import com.merqo.integration.IntegrationRejectionFilter;
+import com.merqo.integration.SecretCipher;
+import com.merqo.settings.SettingService;
 import com.merqo.user.LoginThrottlePolicy;
 import com.merqo.user.PasswordPolicy;
 
@@ -21,32 +30,8 @@ import com.merqo.user.PasswordPolicy;
  * The HTTP security rules of Merqo.
  *
  * <p>Responsibility: describe which endpoints are open, how the session is kept and how the CSRF
- * token travels.
- *
- * <p>The rules:
- *
- * <ul>
- *   <li><b>Default deny.</b> Every request needs an authenticated user, except the endpoints on the
- *       public allow list. The list is data in one place, and a test enumerates every mapped
- *       endpoint and proves that nothing else is open.
- *   <li><b>Server side session.</b> The session lives in PostgreSQL and only holds the user id.
- *       There is no token in local storage.
- *   <li><b>CSRF is on.</b> The token travels in a readable cookie and comes back in a header, which
- *       is the pattern a single page application uses. A POST without a valid token is refused with
- *       a problem response.
- *   <li><b>Session fixation protection.</b> A new session is created on every login.
- * </ul>
- *
- * <p>OOP concepts demonstrated:
- *
- * <ul>
- *   <li><b>Configuration over code</b> - the rules are data, not branching logic in the
- *       controllers.
- *   <li><b>Interface implementation</b> - this class implements Spring Security's {@link
- *       SecurityFilterChain} extension point.
- *   <li><b>Dependency injection</b> - the pure Java policy objects are registered as beans, so the
- *       services and the tests share the same rules.
- * </ul>
+ * token travels, and isolate stateless HMAC-signed {@code /integration/v1/**} webhook traffic into
+ * its own security filter chain.
  */
 @Configuration
 public class SecurityConfiguration {
@@ -61,8 +46,76 @@ public class SecurityConfiguration {
                     "/api/v1/health",
                     "/api/v1/health/ping");
 
+    /** Integration endpoints authenticated by HMAC key signature rather than browser sessions. */
+    public static final List<String> INTEGRATION_ENDPOINTS =
+            List.of(
+                    "/integration/v1/orders",
+                    "/integration/v1/orders/{externalOrderId}",
+                    "/integration/v1/stock");
+
     /**
-     * Builds the security filter chain.
+     * Stateless HMAC-signed filter chain for external website integration endpoints.
+     *
+     * @param http HTTP security builder
+     * @param clientRepository integration clients
+     * @param secretCipher AES-GCM cipher for client secrets
+     * @param rateLimiter DB-backed per-minute rate limiter
+     * @param settingService business settings lookup
+     * @param sessionProperties cookie names (to reject session cookies here)
+     * @param problemAuthenticationEntryPoint RFC 7807 entry point
+     * @param problemAccessDeniedHandler RFC 7807 access denied handler
+     * @param problemResponseWriter shared RFC 7807 writer
+     * @param clock time source
+     * @return the integration filter chain
+     * @throws Exception when the chain cannot be built
+     */
+    @Bean
+    @Order(1)
+    public SecurityFilterChain integrationSecurityFilterChain(
+            HttpSecurity http,
+            IntegrationClientRepository clientRepository,
+            SecretCipher secretCipher,
+            IntegrationRateLimiter rateLimiter,
+            SettingService settingService,
+            MerqoSessionProperties sessionProperties,
+            com.merqo.common.web.ProblemAuthenticationEntryPoint problemAuthenticationEntryPoint,
+            com.merqo.common.web.ProblemAccessDeniedHandler problemAccessDeniedHandler,
+            com.merqo.common.web.ProblemResponseWriter problemResponseWriter,
+            Clock clock)
+            throws Exception {
+        IntegrationAuthFilter integrationAuthFilter =
+                new IntegrationAuthFilter(
+                        clientRepository,
+                        secretCipher,
+                        rateLimiter,
+                        settingService,
+                        sessionProperties,
+                        problemResponseWriter,
+                        clock);
+
+        http.securityMatcher("/integration/v1/**")
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.disable())
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(
+                        handling ->
+                                handling.authenticationEntryPoint(problemAuthenticationEntryPoint)
+                                        .accessDeniedHandler(problemAccessDeniedHandler))
+                .authorizeHttpRequests(requests -> requests.anyRequest().authenticated())
+                .headers(
+                        headers ->
+                                headers.frameOptions(frame -> frame.sameOrigin())
+                                        .httpStrictTransportSecurity(hsts -> {}))
+                .logout(logout -> logout.disable())
+                .anonymous(Customizer.withDefaults())
+                .addFilterBefore(integrationAuthFilter, AnonymousAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    /**
+     * Builds the session-based security filter chain for {@code /api/v1/**}.
      *
      * @param http the HTTP security builder
      * @param sessionProperties the session settings
@@ -70,6 +123,7 @@ public class SecurityConfiguration {
      * @throws Exception when the chain cannot be built
      */
     @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             MerqoSessionProperties sessionProperties,
@@ -83,8 +137,6 @@ public class SecurityConfiguration {
         csrfTokenRepository.setCookiePath("/");
         CsrfTokenRequestAttributeHandler csrfRequestHandler =
                 new CsrfTokenRequestAttributeHandler();
-        // The token is read from the header, not from the request parameter, because the
-        // application is a single page application that talks JSON.
         csrfRequestHandler.setCsrfRequestAttributeName(null);
 
         http.csrf(
@@ -124,18 +176,15 @@ public class SecurityConfiguration {
                 .logout(logout -> logout.disable())
                 .anonymous(Customizer.withDefaults());
 
-        // The filter sits right behind the CSRF filter. It asks for the token value and writes the
-        // XSRF-TOKEN cookie on every answer, so the browser always holds the token of the session
-        // it is in. Without it a sign in answered with the session cookie alone and every request
-        // that changed something was refused with a 403.
+        // Reject integration API headers on staff session endpoints before CSRF/auth handling.
+        http.addFilterBefore(
+                new IntegrationRejectionFilter(problemResponseWriter),
+                org.springframework.security.web.csrf.CsrfFilter.class);
+
         http.addFilterAfter(
                 new com.merqo.common.web.CsrfTokenCookieFilter(csrfTokenRepository),
                 org.springframework.security.web.csrf.CsrfFilter.class);
 
-        // The password rule sits behind the authorization filter, so an anonymous caller is already
-        // answered with 401 and only a signed in account with a pending password change is
-        // affected. It runs after the exception translation filter, so the problem detail it writes
-        // reaches the browser unchanged.
         http.addFilterAfter(
                 new com.merqo.user.PasswordChangeRequiredFilter(problemResponseWriter),
                 org.springframework.security.web.access.ExceptionTranslationFilter.class);
@@ -143,75 +192,36 @@ public class SecurityConfiguration {
         return http.build();
     }
 
-    /**
-     * The password encoder.
-     *
-     * <p>BCrypt with strength 10, because the free Render instance has a small CPU and a stronger
-     * hash would make every login slow.
-     *
-     * @return the encoder
-     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(10);
     }
 
-    /**
-     * The password rules.
-     *
-     * @return the policy
-     */
     @Bean
     public PasswordPolicy passwordPolicy() {
         return new PasswordPolicy();
     }
 
-    /**
-     * The login throttle rules.
-     *
-     * @return the policy
-     */
     @Bean
     public LoginThrottlePolicy loginThrottlePolicy() {
         return new LoginThrottlePolicy();
     }
 
-    /**
-     * The permission resolution rules.
-     *
-     * @return the resolver
-     */
     @Bean
     public PermissionResolver permissionResolver() {
         return new PermissionResolver();
     }
 
-    /**
-     * The delegation rules.
-     *
-     * @return the policy
-     */
     @Bean
     public com.merqo.access.DelegationPolicy delegationPolicy() {
         return new com.merqo.access.DelegationPolicy();
     }
 
-    /**
-     * The assignment rules.
-     *
-     * @return the rules
-     */
     @Bean
     public com.merqo.access.AssignmentRules assignmentRules() {
         return new com.merqo.access.AssignmentRules();
     }
 
-    /**
-     * The starting delegation list of a new manager.
-     *
-     * @param templateRepository the templates
-     * @return the defaults
-     */
     @Bean
     public com.merqo.access.DelegationDefaults delegationDefaults(
             com.merqo.access.PermissionTemplateRepository templateRepository) {

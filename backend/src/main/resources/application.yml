@@ -76,6 +76,8 @@ merqo:
   payment-mode: ${PAYMENT_MODE:mock}
   website-mode: ${WEBSITE_MODE:mock}
   llm-mode: ${LLM_MODE:mock}
+  integration:
+    secret-key: ${INTEGRATION_SECRET_KEY:}
   cors:
     origins: ${CORS_ORIGINS:http://localhost:5173}
   # Session settings. The cookie is host only and carries no Domain attribute.

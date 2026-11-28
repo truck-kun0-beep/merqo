@@ -12,6 +12,9 @@ import java.util.Locale;
 
 import jakarta.servlet.http.Cookie;
 
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +27,8 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.merqo.audit.AuditLogRepository;
 import com.merqo.common.web.CsrfTestSupport;
+import com.merqo.integration.IntegrationClient;
+import com.merqo.integration.IntegrationClientRepository;
 import com.merqo.user.AppUser;
 import com.merqo.user.AppUserRepository;
 
@@ -58,6 +63,10 @@ class SecretsNeverLeakIntegrationTest {
     @Autowired private AppUserRepository userRepository;
 
     @Autowired private AuditLogRepository auditLogRepository;
+
+    @Autowired private IntegrationClientRepository integrationClientRepository;
+
+    @Autowired private ObjectMapper objectMapper;
 
     @Test
     @DisplayName("no answer of the API carries a password hash")
@@ -167,6 +176,47 @@ class SecretsNeverLeakIntegrationTest {
         assertFalse(
                 unknownAccount.contains("not exist") || unknownAccount.contains("unknown user"),
                 "The answer must not say that the account does not exist");
+    }
+
+    @Test
+    @DisplayName("no integration list or audit row exposes plaintext or encrypted webhook secrets")
+    void noIntegrationClientSecretLeaks() throws Exception {
+        Cookie session = signIn("owner");
+        String createBody =
+                bodyOf(
+                        post("/api/v1/integration/clients")
+                                .cookie(session)
+                                .with(CsrfTestSupport.csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"name\":\"Secret Leak Probe\"}"));
+        JsonNode created = objectMapper.readTree(createBody);
+        String clientId = created.get("client").get("id").asString();
+        String secret = created.get("secret").asString();
+        try {
+            IntegrationClient stored =
+                    integrationClientRepository
+                            .findById(java.util.UUID.fromString(clientId))
+                            .orElseThrow();
+            String listBody = bodyOf(get("/api/v1/integration/clients").cookie(session));
+            assertFalse(listBody.contains(secret), "Integration list leaked plaintext secret");
+            assertFalse(
+                    listBody.contains(stored.getSecretEncrypted()),
+                    "Integration list leaked encrypted secret");
+            for (JsonNode entry : objectMapper.readTree(listBody)) {
+                assertFalse(entry.has("secret"));
+                assertFalse(entry.has("secretEncrypted"));
+            }
+
+            String auditsBody = bodyOf(get("/api/v1/audit-logs?size=50").cookie(session));
+            assertFalse(auditsBody.contains(secret), "Audit API leaked plaintext secret");
+            assertFalse(
+                    auditsBody.contains(stored.getSecretEncrypted()),
+                    "Audit API leaked encrypted secret");
+        } finally {
+            integrationClientRepository
+                    .findById(java.util.UUID.fromString(clientId))
+                    .ifPresent(integrationClientRepository::delete);
+        }
     }
 
     /**

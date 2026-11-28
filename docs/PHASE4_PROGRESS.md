@@ -40,7 +40,9 @@ Branch: `main` (`G:\Merqo`)
 - [x] **Slice F**: Scope, privacy & hardening tests (warehouse isolation, 404/403, tampered IDs, Jackson cost-key checks, audit rows, default-deny enumeration)
   - Hardened: `OrderStaffService.requireWarehouseOrDeny`, `ManualOrderService`, `CustomerController` so managers outside WH scope always receive `404 NOT_FOUND` while unpermitted staff receive `403 FORBIDDEN`.
   - Tests: `OrderHardeningIntegrationTest` (2 tests verifying manager 404 / cashier 403 / WH staff missing `ORDER_CANCEL` 403 / tampered ID 404, Jackson recursive key-absence across all endpoints, all 11 Phase 4 audit actions, and append-only repository guarantees) + `PublicEndpointPolicyTest` — passing + Spotless clean.
-- [ ] **Slice G**: Website simulator (`tools/website-simulator/send-order.mjs` & `.ps1`), Demo Console endpoints, and `docs/INTEGRATION_API.md`
+- [x] **Slice G**: Website simulator (`tools/website-simulator/send-order.mjs` & `.ps1`), Demo Console endpoints, and `docs/INTEGRATION_API.md`
+  - Built: `MockWebsiteOrderSource`, `DemoSimulatorController` (`GET /api/v1/demo/simulator-info`, `POST /api/v1/demo/simulate-order`, owner + `DEMO_MODE=true` only), `tools/website-simulator/send-order.mjs` & `send-order.ps1`, complete rewrite of `docs/INTEGRATION_API.md`.
+  - Tests: `DemoSimulatorIntegrationTest` (1 test), `PublicEndpointPolicyTest` (5 tests), `node --check send-order.mjs` — passing + Spotless clean.
 - [ ] **Slice H**: Phase 4 demo data (`DemoOrdersContributor` through real services, idempotent, ~20 orders across states & risk tiers, `DEMO_MODE=false` empty)
 - [ ] **Slice I**: Frontend (Online Orders list & detail, Manual order form, Integration clients settings page, Demo Console page, Overview pending-orders card, Vitest tests, lint/typecheck/build)
 - [ ] **Slice J**: Local smoke script (`scripts/smoke-local.ps1` + live run), docs updates (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `DEPLOY.md`, `.env.example`, `TROUBLESHOOTING.md`, `SETUP.md`), full suite via `scripts\run-tests.bat`, Spotless, final commit/push/live-check
@@ -52,4 +54,4 @@ Branch: `main` (`G:\Merqo`)
 - Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice G — Build `MockWebsiteOrderSource`, Demo Console backend endpoints (`GET /api/v1/demo/simulator-info`, `POST /api/v1/demo/simulate-order`), zero-dependency website simulators (`tools/website-simulator/send-order.mjs` and `send-order.ps1`), full `docs/INTEGRATION_API.md`, and integration tests.
+NEXT STEP: Slice H — Create `DemoOrdersContributor` (idempotent by `demo_key`, order after `DemoPosContributor`, seeding demo webshop client and ~20 orders across statuses/channels/risk tiers + `DEMO_MODE=false` empty test), then run full suite via `scripts\run-tests.bat`.

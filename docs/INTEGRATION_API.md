@@ -1,308 +1,193 @@
 # INTEGRATION_API.md
 
-**The website integration API.**
+**Merqo Website Integration API (`integration/v1`)**
 
-This document specifies how an existing website sends online orders into Merqo.
-The implementation arrives in **Prompt 4**; this is the contract that prompt
-will build against, written now so the design is fixed before any code.
+Merqo exposes a dedicated, stateless, HMAC-SHA256 authenticated integration surface for external storefronts (WooCommerce, custom Next.js/React shops, Shopify middleware, or Merqo's local website simulator).
 
-> **Status:** specified, not implemented. The interface
-> `WebsiteOrderSource` and the inbox table arrive in Prompt 4. The
-> `WEBSITE_MODE=generic` adapter is marked *unimplemented* until then.
+> **Isolation boundary:** Integration keys **cannot** call `/api/v1/**` staff endpoints, and browser session cookies (`MERQO_SESSION`) **cannot** call `/integration/v1/**`. Responses never include internal cost prices, customer risk scores, call notes, or branch-level retail stock.
 
 ---
 
-## 1. Overview
+## 1. Key Management (Owner Only)
 
-```
-Website (WooCommerce, custom shop, anything)
-        │
-        │  HTTPS POST /api/v1/integrations/orders
-        │  Headers: X-Merqo-Key, X-Merqo-Signature, X-Merqo-Timestamp,
-        │           X-Merqo-Idempotency-Key
-        ▼
-Merqo integration inbox
-        │
-        │  the order becomes a soft hold on the warehouse stock
-        ▼
-Online order screen (staff calls the customer, then confirms)
-```
+The business owner creates and rotates external client keys in **Settings -> Integration Keys** or via API:
 
-Key properties:
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/integration/clients` | List registered integration keys (never returns secrets) |
+| `POST` | `/api/v1/integration/clients` | Create key; returns `secret` **once** (stored AES-GCM encrypted via `INTEGRATION_SECRET_KEY`) |
+| `POST` | `/api/v1/integration/clients/{id}/rotate` | Rotate secret; invalidates old secret immediately |
+| `POST` | `/api/v1/integration/clients/{id}/disable` | Disable client (`403 INTEGRATION_DISABLED`) |
+| `POST` | `/api/v1/integration/clients/{id}/enable` | Re-enable disabled client |
 
-| Property | How |
+---
+
+## 2. Authentication & Signing
+
+Every call to `/integration/v1/**` must send these three headers:
+
+| Header | Value |
 | --- | --- |
-| **Authenticated** | API key plus an HMAC-SHA256 signature over the raw body |
-| **Replay safe** | every request carries an idempotency key; a repeat returns the first answer |
-| **Retry safe** | a failed request can be sent again with the same key without creating a second order |
-| **Isolated** | the website can never see staff data, stock levels of a branch or any other order |
+| `X-Merqo-Key` | Public key ID (e.g. `mk_...`) |
+| `X-Merqo-Timestamp` | Unix epoch seconds in UTC |
+| `X-Merqo-Signature` | Lowercase hex `HMAC_SHA256(secret, timestamp + "." + rawBody)` (optional `sha256=` prefix accepted) |
+
+- **Replay protection:** Timestamps outside `±300` seconds (configurable up to `60–900s` via setting `integration.signature_window_seconds`) fail with `401 SIGNATURE_EXPIRED`.
+- **Rate limit:** `60 requests / minute` per key, backed by PostgreSQL (`429 RATE_LIMITED`).
+- **GET requests:** Sign `${timestamp}.` (an empty raw body string).
+
+### Signing Recipes
+
+#### Node.js (18+, zero dependencies)
+
+```js
+import { createHmac } from "node:crypto";
+
+const rawBody = JSON.stringify(orderPayload);
+const ts = Math.floor(Date.now() / 1000).toString();
+const sig = createHmac("sha256", SECRET).update(`${ts}.${rawBody}`, "utf8").digest("hex");
+
+await fetch(`${BASE_URL}/integration/v1/orders`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Merqo-Key": KEY_ID,
+    "X-Merqo-Timestamp": ts,
+    "X-Merqo-Signature": sig,
+  },
+  body: rawBody,
+});
+```
+
+#### PowerShell
+
+```powershell
+$ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString()
+$hmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($Secret))
+$hash = $hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes("$ts.$rawBody"))
+$sig = ([BitConverter]::ToString($hash)).Replace("-", "").ToLowerInvariant()
+```
+
+#### curl + openssl
+
+```bash
+TS=$(date +%s)
+SIG=$(printf '%s.%s' "$TS" "$RAW_BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')
+curl -X POST "$BASE_URL/integration/v1/orders" \
+  -H "Content-Type: application/json" \
+  -H "X-Merqo-Key: $KEY_ID" \
+  -H "X-Merqo-Timestamp: $TS" \
+  -H "X-Merqo-Signature: $SIG" \
+  -d "$RAW_BODY"
+```
+
+Ready-to-run simulator scripts live at `tools/website-simulator/send-order.mjs` and `tools/website-simulator/send-order.ps1`.
 
 ---
 
-## 2. Authentication
+## 3. Endpoints
 
-Two headers are required.
+### Submit Online Order — `POST /integration/v1/orders`
 
-**`X-Merqo-Key`** - the key that identifies the website. It is stored in the
-`settings` table under `integration.website.key` and is never shown in the UI.
+`externalOrderId` serves as the idempotency key per `(client_id, externalOrderId)`.
 
-**`X-Merqo-Signature`** - `sha256=<hex>` where the hex is
-
-```
-HMAC_SHA256(secret, timestamp + "." + rawRequestBody)
-```
-
-- `secret` is the shared secret from `settings` under
-  `integration.website.secret`.
-- `timestamp` is the value of the `X-Merqo-Timestamp` header in **Unix
-  seconds**.
-- `rawRequestBody` is the exact bytes of the body, before any parsing. Reading
-  the body as a string and re-serialising it would change the bytes and break
-  the signature.
-
-**`X-Merqo-Timestamp`** - Unix seconds. A request whose timestamp is more than
-**300 seconds** away from the server time is rejected with
-`401 SIGNATURE_EXPIRED`. This stops a captured request from being replayed
-later.
-
-**`X-Merqo-Idempotency-Key`** - a unique string per order, for example the
-website's own order number. The same key must never be reused for a different
-order.
-
----
-
-## 3. Creating an order
-
-```
-POST /api/v1/integrations/orders
-Content-Type: application/json
-```
-
-### Request
+#### Request Body
 
 ```json
 {
-  "externalOrderNumber": "WEB-2026-000451",
-  "placedAt": "2026-11-20T09:14:22Z",
-  "channel": "ONLINE",
-  "customer": {
-    "name": "Ayesha Rahman",
-    "phone": "+8801700000000",
-    "email": "customer@example.com"
-  },
-  "deliveryAddress": {
-    "line1": "House 12, Road 7, Dhanmondi",
-    "area": "Dhanmondi",
-    "city": "Dhaka",
-    "postalCode": "1209",
-    "country": "BD"
-  },
-  "payment": {
-    "method": "COD",
-    "advanceAmount": 0,
-    "codAmount": 2450.00
-  },
+  "externalOrderId": "WEB-10492",
+  "customerName": "Rafiq Ahmed",
+  "phone": "+880 1711-223344",
+  "address": "House 12, Road 4, Dhanmondi, Dhaka",
+  "district": "Dhaka",
   "lines": [
     {
-      "sku": "TS-BLK-M",
-      "name": "Cotton T-Shirt (Black, M)",
+      "sku": "TSHIRT-BLK-M",
       "quantity": 2,
-      "unitPrice": 850.00
-    },
-    {
-      "sku": "JKT-DNM-L",
-      "name": "Denim Jacket (L)",
-      "quantity": 1,
-      "unitPrice": 750.00
+      "unitPrice": "550.00"
     }
   ],
-  "notes": "Please call before delivery"
+  "shippingFee": "60.00",
+  "discountTotal": "0.00",
+  "total": "1160.00",
+  "paymentMode": "ADVANCE_COD",
+  "advanceAmount": "200.00",
+  "codAmount": "960.00",
+  "claimedAdvanceMethod": "BKASH",
+  "claimedAdvanceReference": "TRX889911",
+  "note": "Deliver after 5 PM"
 }
 ```
 
-### Field rules
+#### Rules Enforced on Intake
 
-| Field | Rule |
-| --- | --- |
-| `externalOrderNumber` | required, unique per website, at most 60 characters |
-| `placedAt` | optional, ISO-8601 UTC, defaults to the arrival time |
-| `customer.phone` | required, digits only after removing spaces, `+` and dashes, 10 to 15 digits |
-| `deliveryAddress.line1` | required, at most 240 characters |
-| `deliveryAddress.area` | optional but strongly recommended; it is used to match a Pathao area id |
-| `lines` | at least one line, at most 100 lines |
-| `lines.sku` | required; unknown SKUs are rejected, they are not silently skipped |
-| `lines.quantity` | from 1 to 999 |
-| `lines.unitPrice` | a decimal with at most two decimals, not negative |
-| `payment.method` | `COD`, `PREPAID` or `ADVANCE_COD` |
-| `payment.advanceAmount` | required when the method is `ADVANCE_COD`, otherwise 0 |
-| `payment.codAmount` | required when the method is `ADVANCE_COD` or `COD` |
+- **Phone normalization:** `+880`/`880`/spaces/dashes normalize to `01[3-9]XXXXXXXX`. Unnormalizable numbers are **accepted** and flagged (`invalidPhone: true`) for staff correction before confirmation.
+- **Line & total reconciliation:** `lines` (`1..50` items), positive quantities, `total == sum(qty * unitPrice) - discountTotal + shippingFee` within `0.01`, else `422 ORDER_TOTAL_MISMATCH`.
+- **Payment modes:**
+  - `COD`: `advanceAmount == 0.00`, `codAmount == total`
+  - `FULL_PREPAID`: `advanceAmount == total`, `codAmount == 0.00`
+  - `ADVANCE_COD`: `0 < advanceAmount < total`, `advanceAmount + codAmount == total`
+  - `claimedAdvanceMethod` (`BKASH | NAGAD | CARD | BANK`) & `claimedAdvanceReference` are recorded as unverified customer claims.
+- **Price comparison:** Merqo compares incoming `unitPrice` against its live `ONLINE` catalog/promo price (`catalog_online_price`). Discrepancies flag `priceMismatch: true` for call-center review without dropping the customer's order.
+- **Idempotency & retry:**
+  - Identical `externalOrderId` + identical SHA-256 payload after success returns `200 OK` (`idempotentReplay: true`) with the existing order.
+  - Same `externalOrderId` with a different payload returns `409 IDEMPOTENCY_CONFLICT`.
+  - If a submission failed (e.g. `422 UNKNOWN_SKU`), `integration_inbox` stays `FAILED` (`attempts` tracked) and retrying after fixing the SKU/catalog succeeds with `201 Created`.
 
-### Successful answer
-
-```
-201 Created
-```
+#### Response (`201 Created` or `200 OK` on replay)
 
 ```json
 {
-  "externalOrderNumber": "WEB-2026-000451",
-  "merqoOrderNumber": "ORD-2026-000451",
-  "status": "RECEIVED",
-  "receivedAt": "2026-11-20T09:14:25Z",
-  "softHeld": true
+  "orderId": "d1a4c...",
+  "orderNumber": "ORD-000042",
+  "externalOrderId": "WEB-10492",
+  "status": "PENDING_CONFIRMATION",
+  "priceMismatch": false,
+  "invalidPhone": false,
+  "idempotentReplay": false,
+  "total": 1160.00,
+  "createdAt": "2026-11-28T06:00:00Z"
 }
 ```
 
-The order is now a **soft hold**: the stock is subtracted from what the website
-sees, but it is not yet hard reserved. Hard reservation happens when staff
-confirm the order after calling the customer.
+### Query Order Status — `GET /integration/v1/orders/{externalOrderId}`
 
-### Errors
+Returns `{ orderId, orderNumber, externalOrderId, status, total, createdAt, confirmedAt, closedAt }` for orders submitted by the authenticated client (returns `404` for other clients' orders).
 
-Every error uses the same RFC 7807 shape as the rest of the API.
+### Check Online Stock Availability — `GET /integration/v1/stock?sku=SKU1,SKU2`
 
-| Status | `errorCode` | Meaning |
-| --- | --- | --- |
-| 400 | `INVALID_SIGNATURE` | the HMAC does not match |
-| 401 | `UNKNOWN_API_KEY` | the key is not known or is deactivated |
-| 401 | `SIGNATURE_EXPIRED` | the timestamp is more than 300 seconds away |
-| 409 | `DUPLICATE_ORDER` | the idempotency key was used with a different body |
-| 422 | `UNKNOWN_SKU` | at least one line refers to a SKU that does not exist |
-| 422 | `INVALID_PAYMENT_TERMS` | the amounts do not add up to the order total |
-| 422 | `INSUFFICIENT_STOCK` | not enough warehouse stock for the online safety buffer |
-| 422 | `VALIDATION_FAILED` | a field is missing or has the wrong format; `fieldErrors` says which |
-
----
-
-## 4. Idempotency
-
-The idempotency key is stored in the integration inbox table together with a
-hash of the request body.
-
-| Situation | Answer |
-| --- | --- |
-| First request with this key | `201 Created`, the order is created |
-| The same key and the same body again | `200 OK` with the **same** order number, nothing is duplicated |
-| The same key but a different body | `409 DUPLICATE_ORDER` |
-
-This is what makes it safe for the website to retry a request that timed out.
-
----
-
-## 5. Checking the status
-
-```
-GET /api/v1/integrations/orders/{externalOrderNumber}
-```
-
-Returns the same object as the create answer, plus the current status:
-
-```
-RECEIVED -> CALLED -> CONFIRMED | DECLINED | CANCELLED
-CONFIRMED -> PACKED -> SHIPPED -> DELIVERED
-```
-
-Customers cannot cancel. A customer who wants to cancel tells the staff, and
-the staff record the cancellation request and cancel the order themselves.
-
----
-
-## 6. Status updates sent to the website (outgoing, optional)
-
-Not required for the integration to work, but the website usually wants to know
-the status. Merqo can call a webhook on the website:
-
-```
-POST {websiteCallbackUrl}
-X-Merqo-Signature: sha256=<hex>   (HMAC over the body with the shared secret)
-```
+Computes sellable warehouse stock as `max(0, onHand - reserved - softHolds - onlineSafetyStock)`:
 
 ```json
 {
-  "externalOrderNumber": "WEB-2026-000451",
-  "merqoOrderNumber": "ORD-2026-000451",
-  "status": "SHIPPED",
-  "courier": { "name": "Pathao", "consignmentId": "PT-778899001" },
-  "changedAt": "2026-11-20T13:02:00Z"
+  "locationId": "7f3a...",
+  "items": [
+    {
+      "sku": "TSHIRT-BLK-M",
+      "found": true,
+      "inStock": true,
+      "available": 12
+    }
+  ]
 }
 ```
 
-The website answers `200 OK`. A non-2xx answer is retried three times with a
-delay, and the failed deliveries are listed in the demo console.
-
 ---
 
-## 7. The inbox table
+## 4. Error Codes
 
-The inbox is append-only. Every incoming request is written down before it is
-processed, so a request that crashes the processing can be found and replayed.
+All errors return RFC 7807 `application/problem+json` with `errorCode`:
 
-| Column | Type | Meaning |
+| HTTP | `errorCode` | Meaning |
 | --- | --- | --- |
-| `id` | `UUID` | primary key |
-| `api_key_id` | `UUID` | which website sent it |
-| `idempotency_key` | `VARCHAR(120)` | the key from the header |
-| `request_hash` | `VARCHAR(64)` | SHA-256 of the raw body |
-| `payload` | `JSONB` | the body as received |
-| `signature_valid` | `BOOLEAN` | whether the HMAC matched |
-| `received_at` | `TIMESTAMPTZ` | when it arrived |
-| `processed_at` | `TIMESTAMPTZ` | when it was handled |
-| `order_id` | `UUID` | the order that was created |
-| `status` | `VARCHAR(30)` | `RECEIVED`, `ACCEPTED` or `REJECTED` |
-| `error_code` | `VARCHAR(60)` | why it was rejected |
-
----
-
-## 8. The `WebsiteOrderSource` interface
-
-The rest of Merqo never talks to the website directly. It talks to this
-interface, so the implementation can be swapped without changing the orders
-module.
-
-```java
-public interface WebsiteOrderSource {
-
-  /** The name shown in the UI, for example "Website" or "WooCommerce". */
-  String name();
-
-  /**
-   * Verifies that an incoming request really comes from the website.
-   *
-   * @param key the API key that was presented
-   * @param signature the HMAC signature that was presented
-   * @param timestamp the timestamp that was presented, in Unix seconds
-   * @param rawBody the exact bytes of the request body
-   * @return the result of the verification
-   */
-  VerificationResult verify(String key, String signature, Instant timestamp, byte[] rawBody);
-
-  /**
-   * Turns a verified payload into a new online order.
-   *
-   * @param payload the body as received
-   * @param idempotencyKey the key that makes a retry safe
-   * @return the created order
-   */
-  OrderReceipt accept(JsonNode payload, String idempotencyKey);
-}
-```
-
-Two implementations:
-
-| Implementation | `WEBSITE_MODE` | Purpose |
-| --- | --- | --- |
-| `MockWebsiteOrderSource` | `mock` | generates orders locally, used by the demo console |
-| `GenericWebsiteOrderSource` | `generic` | the HTTP API described in this document |
-| `WooCommerceWebsiteOrderSource` | `woocommerce` | later, converts the WooCommerce shape into the generic shape |
-
----
-
-## 9. What is deliberately not in this API
-
-- **No customer accounts.** A customer cannot log in, cannot cancel and cannot
-  see their order history. Staff handle all of that on the phone.
-- **No payment details.** The website never sends card numbers. It only states
-  whether the order is prepaid, full COD or advance plus COD.
-- **No stock numbers.** The website never asks "how many are left". It sends
-  an order and Merqo answers.
-- **No direct database access.** The website only uses this API.
+| `400` | `BAD_REQUEST` | Malformed JSON or unreadable body |
+| `401` | `INVALID_SIGNATURE` | Missing headers, unknown `X-Merqo-Key`, or HMAC mismatch |
+| `401` | `SIGNATURE_EXPIRED` | `X-Merqo-Timestamp` outside replay window |
+| `401` | `UNAUTHENTICATED` | Browser session cookie used on `/integration/v1/**` (or API headers on `/api/v1/**`) |
+| `403` | `INTEGRATION_DISABLED` | Key was disabled by owner |
+| `409` | `IDEMPOTENCY_CONFLICT` | Same `externalOrderId` reused with modified payload |
+| `409` | `ONLINE_LOCATION_NOT_SET` | No active warehouse configured with `online_fulfillment = true` |
+| `422` | `UNKNOWN_SKU` | SKU not found, inactive variant, or inactive product |
+| `422` | `ORDER_TOTAL_MISMATCH` | Recomputed total differs from stated `total` by more than `0.01` |
+| `422` | `VALIDATION_FAILED` | Missing/invalid required fields or invalid `PaymentTerms` |
+| `429` | `RATE_LIMITED` | Client exceeded 60 requests per minute |

@@ -1095,3 +1095,24 @@ classDiagram
 - Every public class and every public method has a Javadoc comment.
 - No `null` is returned from a method that promises a value.
 - Business constants live in the `settings` table, never in Java code.
+
+---
+
+## 11. Phase 4 Domain & Integration Design
+
+Phase 4 adds external website integration (`/integration/v1/**`) and warehouse online/manual order handling (`/api/v1/orders/**`, `/api/v1/customers/**`) with strict separation between stateless domain rules and JPA services:
+
+```mermaid
+flowchart LR
+    Web[WebsiteOrderSource] --> Valid[IncomingOrderValidator]
+    Valid --> Intake[OrderIntakeService]
+    Intake --> Soft[OrderSoftHoldReader / OnlineAvailabilityCalculator]
+    Staff[OrderStaffService] --> Trans[OrderTransitions]
+    Staff --> Inv[InventoryService reserve/release]
+    Staff --> Risk[PhoneRiskPolicy]
+```
+
+- **`OrderTransitions`** holds the closed Phase 4 state machine (`PENDING_CONFIRMATION -> FOLLOW_UP / CONFIRMED / DECLINED / CANCELLED`, `FOLLOW_UP -> CONFIRMED / DECLINED / CANCELLED`, `CONFIRMED -> CANCELLED`) so invalid state jumps fail uniformly with `409 INVALID_TRANSITION`.
+- **`RequestSignature`** computes and verifies constant-time `HMAC-SHA256(secret, timestamp + "." + rawBody)` with a fixed-`Clock` replay window (`integration.signature_window_seconds`, default `300s`).
+- **`OrderStaffService` & `OrderIntakeService`** use PostgreSQL `SELECT ... FOR UPDATE` locks (`findForUpdate` / `findByIdForUpdate`) and deterministic `variantId` reservation ordering so concurrent webhook retries and concurrent last-unit confirmations never double-create or deadlock.
+

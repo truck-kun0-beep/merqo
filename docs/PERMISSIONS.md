@@ -567,3 +567,22 @@ So a branch manager may create a POS promotion for their own branches only.
 
 Every Phase 3 response (`POST /pos/sales`, `GET /pos/sales`, `GET /pos/sales/{id}`, `GET /pos/sales/lookup`, `GET /pos/sales/{id}/receipt`, `POST /pos/sales/{id}/reprint`, `POST /pos/sales/{id}/returns`, `POST /inventory/inspections/resolve`) checks `COST_VIEW` (or `COST_VIEW` / `PRICE_EDIT` on inspection resolve) at the sale/location before adding `unitCost`, `belowCost`, `belowCostWarnings`, or `valueAtCost`. Cashiers without `COST_VIEW` never receive those JSON keys at all (verified recursively with Jackson in `PosHardeningIntegrationTest`).
 
+---
+
+## 13. Phase 4 Order Handling & Integration Permissions
+
+| Action / Endpoint | Permission / Auth | Scope & extra rules |
+| --- | --- | --- |
+| `GET/POST /api/v1/integration/clients*` | `SETTINGS_MANAGE` (Owner only) | Non-owners get `403`. Plaintext secret returned only on create & rotate; never stored in audit logs. |
+| `GET/POST /integration/v1/orders*`, `GET /integration/v1/stock` | HMAC-SHA256 API key (`IntegrationAuthFilter`) | Rejects `MERQO_SESSION` cookies (`401`). Returns sanitized availability/status only (never cost, phone risk, or retail branch stock). |
+| `GET /api/v1/orders`, `GET /orders/counts`, `GET /orders/{id}` | `ORDER_VIEW` at `WH` | Branch managers outside `WH` scope get `404` on order IDs and WH endpoints; cashiers without `ORDER_*` get `403`. |
+| `POST /orders/{id}/calls`, `PUT /orders/{id}/customer`, `POST /orders/{id}/cancellation-request` | `ORDER_CALL` at `WH` | Non-answered call results require note (`CALL_NOTE_REQUIRED`). Customer edit requires normalizable BD phone (`INVALID_PHONE`). |
+| `POST /orders/{id}/confirm` | `ORDER_CONFIRM` at `WH` | Requires normalized BD phone (`422 INVALID_PHONE`); reserves all lines atomically (`409 INSUFFICIENT_STOCK`). |
+| `POST /orders/{id}/decline` | `ORDER_DECLINE` at `WH` | Unconfirmed orders only; `OTHER` requires note (`422 REASON_REQUIRED`). |
+| `POST /orders/{id}/cancel` | `ORDER_CANCEL` at `WH` | Releases hard reservation if `CONFIRMED`; flags claimed advances for Phase 5 refund review without auto-refunding. |
+| `POST /api/v1/orders/manual` | `ORDER_CREATE_MANUAL` at `WH` | Prices computed server-side from catalog + `ONLINE` promos (`confirmNow=true` also requires `ORDER_CONFIRM`). |
+| `GET /api/v1/orders/availability` | `ORDER_VIEW` + `INVENTORY_VIEW` at `WH` | Shows `onHand`, `reserved`, `softHolds`, `safetyStock`, `available`; never shows costs. |
+| `GET /api/v1/customers/history` | `ORDER_VIEW` at `WH` | Derived order outcome counts + `NEW`/`OK`/`WATCH`/`HIGH` tier using `threshold.refusal_risk_count`. |
+| `GET/POST /api/v1/demo/simulator*` | Owner only (`DEMO_MODE=true`) | Returns `404` when `DEMO_MODE=false`; `403` for non-owners. |
+
+

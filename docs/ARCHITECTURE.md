@@ -645,3 +645,15 @@ the prompts that need them arrive.
 - No personal data and no secrets in the logs.
 - The session cookie is `HttpOnly`, `SameSite=Lax` and host only, so it never
   leaves the site of the frontend.
+
+---
+
+## 11. Phase 4 Online Orders & Integration Isolation
+
+- **Two isolated security filter chains (`SecurityConfiguration`):**
+  - `@Order(1)` handles `/integration/v1/**` statelessly with `IntegrationAuthFilter` (`X-Merqo-Key`, `X-Merqo-Timestamp`, `X-Merqo-Signature`), rejects browser `MERQO_SESSION` cookies, and enforces a DB-backed `60 req/min` sliding rate limit (`integration_rate_attempts`).
+  - `@Order(2)` handles `/api/v1/**` with PostgreSQL sessions + CSRF and rejects `X-Merqo-Key` / `X-Merqo-Signature` headers via `IntegrationRejectionFilter`.
+- **Encrypted API secrets:** client secrets are encrypted at rest with AES-GCM (`SecretCipher`, `INTEGRATION_SECRET_KEY`) and exposed plaintext once at creation or rotation.
+- **Warehouse soft holds vs hard reservations:** unconfirmed orders (`PENDING_CONFIRMATION`, `FOLLOW_UP`) contribute derived soft holds via `OrderSoftHoldReader` (no mutable balance column); confirming reserves hard stock in `inventory_balances.reserved` all-or-nothing inside the transaction.
+- **Append-only order logs:** `order_status_history` and `order_call_logs` reuse PostgreSQL trigger `merqo_reject_append_only_mutation()`.
+

@@ -618,3 +618,20 @@ scripts now report the same thing about the same deployment.
 **Decision:** `SaleService.createSaleForDemo`, `ReturnService.createReturnForDemo`, `CashSessionService.openForDemo`/`closeForDemo`, and `ApprovalService.setApprovalPinForDemo` exist strictly for `DemoPosContributor` (`@ConditionalOnProperty(name = "merqo.demo-mode", havingValue = "true")`) to back-date 14 days of demo history and seed demo PIN `1234` without exposing timestamp overrides on any HTTP controller.
 
 **Reason:** public POS APIs must always stamp server `Clock` time and enforce PIN complexity/throttling, while realistic demo reports require multi-day sales history across branches.
+
+---
+
+## A43 - AES-GCM encrypted integration keys & hash-only webhook inbox
+
+**Decision:** external integration secrets are encrypted with AES-GCM (`SecretCipher`, key derived from `INTEGRATION_SECRET_KEY`), while `integration_inbox` stores only a SHA-256 `payload_hash` and error summary (never raw customer PII payloads). Startup check `IntegrationKeyStartupCheck` allows empty keys only when zero clients exist.
+
+**Reason:** webhook verification needs the shared HMAC secret, so irreversible hashing cannot verify incoming requests; AES-GCM protects resting secrets while keeping PII out of durable inbox logs.
+
+---
+
+## A44 - Derived online soft holds without a separate balance column
+
+**Decision:** `PENDING_CONFIRMATION` and `FOLLOW_UP` order quantities are summed directly from `order_lines JOIN orders` (`OrderSoftHoldReader`) and subtracted inside `OnlineAvailabilityCalculator` alongside `inventory_balances.reserved` and `inventory_policies.online_safety_stock`. Hard reservations (`inventory_balances.reserved`) happen only upon staff confirmation (`POST /api/v1/orders/{id}/confirm`).
+
+**Reason:** unconfirmed website orders are frequently declined or unreachable; deriving soft holds avoids drift on balance rows while preventing double-selling across concurrent shoppers.
+

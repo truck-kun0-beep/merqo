@@ -49,13 +49,17 @@ Branch: `main` (`G:\Merqo`)
 - [x] **Slice I**: Frontend (Online Orders list & detail, Manual order form, Integration clients settings page, Demo Console page, Overview pending-orders card, Vitest tests, lint/typecheck/build)
   - Built: `src/api/orders.ts`, `OrderBadges.tsx`, `StatusPill.tsx` statuses, `posErrors.ts` (10 Phase 4 error codes), `validation.ts` (BD phone normalization & call/decline/cancel/manual schemas), `OrdersPage.tsx`, `OrderDetailPage.tsx`, `ManualOrderPage.tsx`, `WarehouseAvailabilityPage.tsx`, `IntegrationClientsPage.tsx`, `DemoConsolePage.tsx`, `App.tsx`, `AppShell.tsx`, `HomePage.tsx` (Overview `"Orders awaiting confirmation"` real count).
   - Tests: `Phase4.test.tsx` (6 tests); full frontend `lint`, `typecheck`, `vitest run` (19 files, 90 tests), and `vite build` — all green.
-- [ ] **Slice J**: Local smoke script (`scripts/smoke-local.ps1` + live run), docs updates (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `DEPLOY.md`, `.env.example`, `TROUBLESHOOTING.md`, `SETUP.md`), full suite via `scripts\run-tests.bat`, Spotless, final commit/push/live-check
+- [x] **Slice J**: Local smoke script (`scripts/smoke-local.ps1` + live run), docs updates (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `DEPLOY.md`, `.env.example`, `TROUBLESHOOTING.md`, `SETUP.md`), full suite via `scripts\run-tests.bat`, Spotless, final commit/push/live-check
+  - Built: `scripts/smoke-local.ps1` (17/17 local smoke checks passed against packaged Spring Boot JAR + PostgreSQL 17.5 including `tools/website-simulator/send-order.mjs` + replay); updated `JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `TROUBLESHOOTING.md`, `SETUP.md`.
+  - Final full-suite verification via `scripts\run-tests.bat` (clean `merqo_test` recreate, backend Maven `clean verify` + Spotless, frontend Vitest + ESLint), `npm run typecheck`, `npm run build`, push to `main`, and live check.
 
 ## Test Classes
-- Baseline clean (`scripts\run-tests.bat` passed prior to Phase 4).
+- Backend Phase 4 unit & domain tests: `OrderDomainTest`, `RequestSignatureTest`, `SettingKeyTest`
+- Backend Phase 4 security & integration tests: `IntegrationSecurityTest`, `PublicEndpointPolicyTest`, `SecretsNeverLeakIntegrationTest`, `OrderIntakeIntegrationTest`, `OrderStaffIntegrationTest`, `OrderManualAndCustomerIntegrationTest`, `OrderHardeningIntegrationTest`, `DemoSimulatorIntegrationTest`, `DemoOrdersIntegrationTest`, `DemoDisabledIntegrationTest`
+- Frontend Vitest suite: `Phase4.test.tsx` (6 tests) + 18 existing test files (`90` total tests)
 
 ## Open Problems
-- Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
+- Live Render URL `https://merqo-api.onrender.com` returned 404/502 during initial `check-live.ps1` (re-checked at end of Phase 4).
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice J — Write and run `scripts/smoke-local.ps1` against locally started Spring Boot backend, update repository docs for Phase 4 (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `TROUBLESHOOTING.md`, `SETUP.md`), run `scripts\run-tests.bat` + Spotless, commit, push `main`, and run `scripts/check-live.ps1`.
+NEXT STEP: NONE — Phase 4 complete.

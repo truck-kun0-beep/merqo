@@ -330,3 +330,17 @@ When reporting a problem, include:
 
 The correlation id is in the `X-Correlation-Id` response header and in every log
 line of that request, which makes the exact cause findable with one search.
+
+---
+
+## 7. Website Integration & Order Workflows
+
+### Startup fails with `INTEGRATION_SECRET_KEY must be set when integration clients exist`
+
+In production (`prod` profile), if any rows exist in `integration_clients`, you must set `INTEGRATION_SECRET_KEY` (any strong 32+ character string) in your environment variables before booting. In `dev` and `test` profiles a local default is preconfigured.
+
+### Webhook calls fail with `401 SIGNATURE_EXPIRED` or `401 INVALID_SIGNATURE`
+
+- Ensure your clock is synchronized (default allowed replay window is ±300 seconds, configured via `integration.signature_window_seconds`).
+- Compute `HMAC-SHA256(secret, timestamp + "." + rawRequestBody)` over the exact raw request bytes (or empty string `""` for `GET` requests).
+- Do **not** include browser session cookies (`MERQO_SESSION`) on `/integration/v1/**` calls, and do **not** send `X-Merqo-Key` headers on `/api/v1/**` staff endpoints.

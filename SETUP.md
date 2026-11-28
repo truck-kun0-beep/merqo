@@ -328,7 +328,19 @@ PostgreSQL is not running. Check `Get-Service postgresql*` and look at the
 
 Sign in on <http://localhost:5173>. With `DEMO_MODE=true` the login page
 shows the demo accounts; one click signs you in. The demo locations, the demo
-accounts and the demo catalogue are written by the backend itself at every
-start, so there is no separate seed step.
+accounts, the demo catalogue, Phase 3 POS history, and Phase 4 demo webshop
+orders are written by the backend itself at every start.
+
+To simulate external website orders locally against a running backend without extra tools:
+
+```powershell
+# PowerShell simulator
+tools\website-simulator\send-order.ps1 -Sku TE-100-BLK -UnitPrice 750.00 -Replay
+
+# Node.js simulator
+node tools/website-simulator/send-order.mjs --sku TE-100-BLK --price 750.00 --replay
+```
+
+Or run the full Phase 4 local HTTP verification flow: `scripts\smoke-local.ps1`.
 
 Then follow [DEPLOY.md](DEPLOY.md) to put Merqo online.

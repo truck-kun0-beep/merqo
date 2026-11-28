@@ -11,7 +11,7 @@
 # ---------------------------------------------------------------------------
 services:
   - type: web
-    name: merqo-api
+    name: merqo
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .

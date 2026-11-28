@@ -17,7 +17,7 @@ bottom).
 | Part | Host | Result |
 | --- | --- | --- |
 | Database | Supabase (free tier) | PostgreSQL, 500 MB, no automatic backups |
-| Backend | Render (free web service) | `https://merqo-api.onrender.com` |
+| Backend | Render (free web service) | `https://merqo.onrender.com` |
 | Frontend | Cloudflare Pages (free tier) | `https://merqo.pages.dev` |
 | Proxy | Cloudflare Pages Function | makes `/api` same-origin |
 
@@ -102,7 +102,7 @@ jdbc:postgresql://aws-0-REGION.pooler.supabase.com:5432/postgres
 2. Click **New → Web Service**.
 3. **Connect a repository:** pick your `merqo` repository.
 4. Fill in the form:
-   - **Name:** `merqo-api`
+   - **Name:** `merqo`
    - **Region:** the same region as the database, or the nearest to it.
    - **Branch:** `main`
    - **Language / Runtime:** **Docker**
@@ -159,7 +159,7 @@ Tomcat started on port 10000
 2. Open the **Shell** tab and run:
 
    ```
-   curl -s https://merqo-api.onrender.com/api/v1/health/ping
+   curl -s https://merqo.onrender.com/api/v1/health/ping
    ```
 
    You should see `{"status":"UP","pong":true,...}`.
@@ -201,7 +201,7 @@ Tomcat started on port 10000
 
    | Key | Value |
    | --- | --- |
-   | `API_BASE_URL` | `https://merqo-api.onrender.com` |
+   | `API_BASE_URL` | `https://merqo.onrender.com` |
 
 3. Click **Save**.
 4. Go to **Deployments** → **Trigger deploy** (or push an empty commit) so the
@@ -214,7 +214,7 @@ Tomcat started on port 10000
 
 ## Step 5 - Point the backend CORS at the frontend
 
-1. Go back to **Render** → your `merqo-api` service → **Environment**.
+1. Go back to **Render** → your `merqo` service → **Environment**.
 2. Set `CORS_ORIGINS` to `https://merqo.pages.dev`.
 3. Click **Save Changes**. Render restarts the service automatically.
 
@@ -231,7 +231,7 @@ which means the instructor never waits.
 3. Fill in:
    - **Monitor Type:** `HTTP(s)`
    - **Friendly Name:** `Merqo backend`
-   - **URL (or IP):** `https://merqo-api.onrender.com/api/v1/health/ping`
+   - **URL (or IP):** `https://merqo.onrender.com/api/v1/health/ping`
    - **Monitoring Interval:** `10 minutes`
    - **Timeout:** `60 seconds` (the first request after a sleep is slow)
 4. Click **Create Monitor**.
@@ -266,7 +266,7 @@ Then:
 1. Open the browser developer tools → **Network**.
 2. Reload the page.
 3. Confirm the requests go to `merqo.pages.dev/api/v1/health` and not to
-   `merqo-api.onrender.com`. That proves the browser sees one origin.
+   `merqo.onrender.com`. That proves the browser sees one origin.
 4. Repeat the test in **Chrome**, **Edge**, **Firefox** and **Safari**.
 
 > The script signs in as the demo owner and ends there. It never writes
@@ -336,7 +336,7 @@ most common deployment problems:
 | --- | --- | --- |
 | Render build fails at `mvn package` | the Docker build cannot reach Maven Central | check the Render build log, retry the deploy |
 | Render deploys but the site returns 503 | the database is unreachable | check `DATABASE_URL`, `DB_USER`, `DB_PASSWORD`; make sure it is the **session pooler** host |
-| The frontend shows "Server is waking up" forever | `API_BASE_URL` is missing or wrong in Cloudflare | set it to `https://merqo-api.onrender.com` and redeploy |
+| The frontend shows "Server is waking up" forever | `API_BASE_URL` is missing or wrong in Cloudflare | set it to `https://merqo.onrender.com` and redeploy |
 | The frontend shows a CORS error | `CORS_ORIGINS` does not match the Pages URL | set it to the exact Pages URL, without a trailing slash |
 | Flyway fails on startup | the database is paused or the schema is wrong | open the Supabase dashboard, resume the project, redeploy |
 | The site works, then sleeps after 15 minutes | the uptime monitor is not running | check the monitor in UptimeRobot |

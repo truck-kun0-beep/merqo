@@ -5,7 +5,7 @@ import { onRequest } from './[[path]]'
 /**
  * The environment the function runs in.
  */
-const ENV = { API_BASE_URL: 'https://merqo-api.onrender.com' }
+const ENV = { API_BASE_URL: 'https://merqo.onrender.com' }
 
 /**
  * Builds the request of the browser.
@@ -89,7 +89,7 @@ describe('the Cloudflare proxy', () => {
   it('sends the path and the query to the configured backend', async () => {
     const { upstreamRequest } = await run({ status: 200 })
 
-    expect(upstreamRequest?.url).toBe('https://merqo-api.onrender.com/api/v1/auth/login?x=1')
+    expect(upstreamRequest?.url).toBe('https://merqo.onrender.com/api/v1/auth/login?x=1')
   })
 
   it('never lets the answer be stored', async () => {

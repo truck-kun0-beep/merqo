@@ -27,7 +27,7 @@ viva and deployable on free hosting.
 │  Cloudflare Pages       │
 │  functions/api/[[path]] │  ← the proxy
 └───────────┬─────────────┘
-            │ https://merqo-api.onrender.com/api/v1/...
+            │ https://merqo.onrender.com/api/v1/...
 ┌───────────▼─────────────┐
 │  Render free web svc    │
 │  Spring Boot 4.1.3      │
@@ -381,7 +381,7 @@ Browser                     ← {errorCode, detail, correlationId, fieldErrors, 
 ### The problem
 
 The frontend is on `merqo.pages.dev`, the backend is on
-`merqo-api.onrender.com`. If the browser called the backend directly, the
+`merqo.onrender.com`. If the browser called the backend directly, the
 session cookie would be a **third party cookie**. Chrome, Edge, Firefox and
 Safari all block or limit those by default now, so the login would work on the
 developer's machine and break in front of the instructor.
@@ -400,7 +400,7 @@ Browser  ──►  merqo.pages.dev/api/v1/...          (same origin, cookie wor
              Pages Function
                     │
                     ▼
-             merqo-api.onrender.com/api/v1/...
+             merqo.onrender.com/api/v1/...
 ```
 
 ### Why the session cookie and not a token

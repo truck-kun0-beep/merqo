@@ -274,7 +274,7 @@ Check that the login request goes to the **Pages** domain and not to the
 Render domain. Open the developer tools → **Network** → click the login request
 → the URL must start with `https://merqo.pages.dev`.
 
-If it points at `merqo-api.onrender.com`, then `API_BASE_URL` is wrong or the
+If it points at `merqo.onrender.com`, then `API_BASE_URL` is wrong or the
 proxy is not being used.
 
 ### The cookie is not sent

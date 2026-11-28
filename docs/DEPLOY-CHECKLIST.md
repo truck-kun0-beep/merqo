@@ -22,11 +22,11 @@ to the assistant with the step number.
 | Supabase project ref | `________________` |
 | Supabase region | `Singapore` |
 | Supabase DB password | `________________` (keep this out of git) |
-| Render service name | `merqo-api` |
+| Render service name | `merqo` |
 | Render region | `Singapore` |
 | Pages project | `merqo` |
 | Pages URL | `https://merqo.pages.dev` |
-| Backend URL | `https://merqo-api.onrender.com` |
+| Backend URL | `https://merqo.onrender.com` |
 
 ---
 
@@ -73,7 +73,7 @@ git push origin main
 ## Step 3 - Create the backend (Render)
 
 - [ ] <https://render.com> → **New → Web Service** → pick the `merqo` repo.
-- [ ] Name `merqo-api`, region **Singapore**, branch `main`.
+- [ ] Name `merqo`, region **Singapore**, branch `main`.
 - [ ] Runtime **Docker**, Dockerfile `./Dockerfile`, context `.`.
 - [ ] Plan **Free**.
 
@@ -109,7 +109,7 @@ git push origin main
 - [ ] Render → **Shell** → run:
 
 ```bash
-curl -s https://merqo-api.onrender.com/api/v1/health/ping
+curl -s https://merqo.onrender.com/api/v1/health/ping
 ```
 
 - [ ] The answer contains `"pong":true`.
@@ -137,7 +137,7 @@ curl -s https://merqo-api.onrender.com/api/v1/health/ping
 
 | Key | Value |
 | --- | --- |
-| `API_BASE_URL` | `https://merqo-api.onrender.com` |
+| `API_BASE_URL` | `https://merqo.onrender.com` |
 
 - [ ] Click **Save**, then **Deployments → Trigger deploy**.
 
@@ -178,7 +178,7 @@ what a browser does with the cookie:
 - [ ] Open `https://merqo.pages.dev` in a private window.
 - [ ] The page shows the Merqo header and a health panel with **UP**.
 - [ ] DevTools → **Network** → reload → the requests go to
-      `merqo.pages.dev/api/...` and **not** to `merqo-api.onrender.com`.
+      `merqo.pages.dev/api/...` and **not** to `merqo.onrender.com`.
 
 > Paste this output if stuck: the whole output of `scripts\check-live.bat`, and
 > the list of request URLs from the Network tab.
@@ -212,7 +212,7 @@ Do this **after** the Prompt 1 backend is deployed.
 ## Step 7 - Free uptime monitor
 
 - [ ] <https://uptimerobot.com> → add an HTTP monitor:
-      `https://merqo-api.onrender.com/api/v1/health/ping`, interval 10
+      `https://merqo.onrender.com/api/v1/health/ping`, interval 10
       minutes, timeout 60 seconds.
 
 > Paste this output if stuck: the monitor page as text.

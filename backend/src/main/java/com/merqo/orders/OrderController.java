@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,10 +22,12 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.merqo.common.web.PageRequest;
 import com.merqo.common.web.PageResponse;
+import com.merqo.orders.ManualOrderService.CreateManualOrderRequest;
 import com.merqo.orders.OrderDtos.OrderCancelResponse;
 import com.merqo.orders.OrderDtos.OrderCountsView;
 import com.merqo.orders.OrderDtos.OrderDetailView;
@@ -46,12 +49,24 @@ import com.merqo.user.CurrentUserService;
 public class OrderController {
 
     private final OrderStaffService orderStaffService;
+    private final ManualOrderService manualOrderService;
     private final CurrentUserService currentUserService;
 
     public OrderController(
-            OrderStaffService orderStaffService, CurrentUserService currentUserService) {
+            OrderStaffService orderStaffService,
+            ManualOrderService manualOrderService,
+            CurrentUserService currentUserService) {
         this.orderStaffService = orderStaffService;
+        this.manualOrderService = manualOrderService;
         this.currentUserService = currentUserService;
+    }
+
+    @PostMapping("/manual")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Create a manual phone/WhatsApp order using server online pricing")
+    public OrderDetailView createManual(
+            @Valid @RequestBody CreateManualOrderRequest body, HttpServletRequest request) {
+        return manualOrderService.create(currentUserService.requireAccessContext(), body, request);
     }
 
     @GetMapping

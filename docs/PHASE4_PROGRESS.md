@@ -34,7 +34,9 @@ Branch: `main` (`G:\Merqo`)
 - [x] **Slice D**: Staff order handling (list, detail, call log, customer edit, confirm hard reserve, decline, cancel release, cancellation request, availability view + concurrency & trigger tests)
   - Built: `PhoneRiskService`, `OrderDtos`, `OrderStaffService`, `OrderController`, `OrderRepository` (`JpaSpecificationExecutor`).
   - Tests: `OrderStaffIntegrationTest` (2 tests covering Dhaka date boundaries, call logs + `CALL_NOTE_REQUIRED` + auto `FOLLOW_UP`, customer phone edit, atomic multi-line reservation + rollback on shortage, concurrent confirm race on last unit, cancel release + claimed advance notice, decline reasons, cancellation request, PostgreSQL append-only triggers on `order_status_history` & `order_call_logs`, and `reserved <= on_hand` balance invariants) — 2/2 passing + Spotless clean.
-- [ ] **Slice E**: Manual orders & customer history (`POST /orders/manual`, history counts, risk badge, `GET /customers/history` + tier/threshold tests)
+- [x] **Slice E**: Manual orders & customer history (`POST /orders/manual`, history counts, risk badge, `GET /customers/history` + tier/threshold tests)
+  - Built: `ManualOrderService`, `CustomerController` (`/api/v1/customers/history`), `POST /api/v1/orders/manual` on `OrderController`.
+  - Tests: `OrderManualAndCustomerIntegrationTest` (2 tests verifying server catalog + ONLINE promo pricing ignoring POS-only promos, `confirmNow` atomic reserve, customer history counts and `NEW`/`OK`/`WATCH`/`HIGH` risk progression driven by live `threshold.refusal_risk_count`) — 2/2 passing + Spotless clean.
 - [ ] **Slice F**: Scope, privacy & hardening tests (warehouse isolation, 404/403, tampered IDs, Jackson cost-key checks, audit rows, default-deny enumeration)
 - [ ] **Slice G**: Website simulator (`tools/website-simulator/send-order.mjs` & `.ps1`), Demo Console endpoints, and `docs/INTEGRATION_API.md`
 - [ ] **Slice H**: Phase 4 demo data (`DemoOrdersContributor` through real services, idempotent, ~20 orders across states & risk tiers, `DEMO_MODE=false` empty)
@@ -48,4 +50,4 @@ Branch: `main` (`G:\Merqo`)
 - Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice E — Implement manual order creation (`POST /api/v1/orders/manual` with server catalog + ONLINE promo pricing) and customer history endpoint (`GET /api/v1/customers/history?phone=`) plus risk badge threshold integration tests.
+NEXT STEP: Slice F — Add `OrderHardeningIntegrationTest` proving warehouse scope isolation (`manager-dm` 404, `cashier-dm` 403), Jackson recursive key-absence privacy assertions across all endpoints, all 11 Phase 4 audit actions, tampered IDs, and append-only repository checks.

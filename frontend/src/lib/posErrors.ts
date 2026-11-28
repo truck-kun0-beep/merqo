@@ -22,6 +22,16 @@ const STATIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   RETURN_QUANTITY_EXCEEDED:
     'Return quantity exceeds the remaining returnable quantity on this sale.',
   RETURN_WINDOW_EXPIRED: 'The return window for this sale has expired.',
+  INVALID_SIGNATURE: 'Integration API signature or key is invalid.',
+  SIGNATURE_EXPIRED: 'Request timestamp is outside the allowed signature window.',
+  INTEGRATION_DISABLED: 'This integration API client has been disabled by the owner.',
+  UNKNOWN_SKU: 'One or more product SKUs are unknown or inactive.',
+  INVALID_PHONE: 'Enter a valid Bangladeshi mobile number (e.g. 01712345678).',
+  ONLINE_LOCATION_NOT_SET:
+    'No active fulfillment warehouse is configured. Enable one under Locations.',
+  CALL_NOTE_REQUIRED: 'Enter a call note when the customer does not answer normally.',
+  REASON_REQUIRED: 'Please provide an explanatory note when selecting OTHER.',
+  RATE_LIMITED: 'API client exceeded the 60 requests/minute rate limit. Wait briefly and retry.',
 }
 
 /**
@@ -52,7 +62,9 @@ export function resolveApiErrorMessage(
         'Approval PIN entry is temporarily locked after repeated failures. Try again later.'
       )
     case 'INSUFFICIENT_STOCK':
-      return fallbackDetail || 'Not enough sellable stock available at this branch.'
+      return fallbackDetail || 'Not enough sellable stock available at this location.'
+    case 'ORDER_TOTAL_MISMATCH':
+      return fallbackDetail || 'Order grand total does not match line subtotal, discount, and shipping.'
     default:
       return fallbackDetail
   }
@@ -76,4 +88,17 @@ export const MAPPED_POS_ERROR_CODES = [
   'RETURN_QUANTITY_EXCEEDED',
   'RETURN_WINDOW_EXPIRED',
   'INSUFFICIENT_STOCK',
+] as const
+
+export const MAPPED_ORDER_ERROR_CODES = [
+  'INVALID_SIGNATURE',
+  'SIGNATURE_EXPIRED',
+  'INTEGRATION_DISABLED',
+  'UNKNOWN_SKU',
+  'ORDER_TOTAL_MISMATCH',
+  'INVALID_PHONE',
+  'ONLINE_LOCATION_NOT_SET',
+  'CALL_NOTE_REQUIRED',
+  'REASON_REQUIRED',
+  'RATE_LIMITED',
 ] as const

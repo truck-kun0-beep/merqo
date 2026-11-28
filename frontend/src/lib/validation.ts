@@ -158,3 +158,101 @@ export const transferRequestSchema = z
     path: ['destinationLocationId'],
     message: 'Source and destination must be different locations.',
   })
+
+/** Mirrors `com.merqo.orders.domain.PhoneNumber`. Returns canonical `01[3-9]XXXXXXXX` or `null`. */
+export function normalizeBdPhone(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  let stripped = trimmed.replace(/[\s\-()]/g, '')
+  if (stripped.startsWith('+880')) {
+    stripped = '0' + stripped.slice(4)
+  } else if (stripped.startsWith('880')) {
+    stripped = '0' + stripped.slice(3)
+  }
+  return /^01[3-9]\d{8}$/.test(stripped) ? stripped : null
+}
+
+export const bdPhoneSchema = z
+  .string()
+  .trim()
+  .min(1, 'Phone number is required.')
+  .refine((val) => normalizeBdPhone(val) !== null, {
+    message: 'Enter a valid Bangladeshi mobile number (e.g. 01712345678).',
+  })
+
+export const callLogFormSchema = z
+  .object({
+    result: z.enum(['ANSWERED', 'NO_ANSWER', 'BUSY', 'WRONG_NUMBER', 'CALL_BACK_REQUESTED']),
+    note: z.string().trim(),
+    followUpAt: z.string().optional(),
+  })
+  .refine((data) => data.result === 'ANSWERED' || data.note.trim().length > 0, {
+    path: ['note'],
+    message: 'A note is required when the customer does not answer normally.',
+  })
+
+export const declineOrderFormSchema = z
+  .object({
+    reason: z.enum([
+      'CUSTOMER_UNREACHABLE',
+      'CUSTOMER_DECLINED',
+      'OUT_OF_STOCK',
+      'INVALID_ADDRESS',
+      'SUSPECTED_FAKE',
+      'OTHER',
+    ]),
+    note: z.string().trim(),
+  })
+  .refine((data) => data.reason !== 'OTHER' || data.note.trim().length > 0, {
+    path: ['note'],
+    message: 'Please explain the decline reason when choosing OTHER.',
+  })
+
+export const cancelOrderFormSchema = z
+  .object({
+    reason: z.enum(['CUSTOMER_REQUESTED', 'STOCK_PROBLEM', 'ADDRESS_PROBLEM', 'OTHER']),
+    note: z.string().trim(),
+  })
+  .refine((data) => data.reason !== 'OTHER' || data.note.trim().length > 0, {
+    path: ['note'],
+    message: 'Please explain the cancellation reason when choosing OTHER.',
+  })
+
+export const editCustomerFormSchema = z.object({
+  customerName: z.string().trim().min(1, 'Customer name is required.'),
+  phone: bdPhoneSchema,
+  address: z.string().trim().min(1, 'Delivery address is required.'),
+  district: z.string().trim().optional(),
+  note: z.string().trim().optional(),
+})
+
+export const manualOrderFormSchema = z.object({
+  customerName: z.string().trim().min(1, 'Customer name is required.'),
+  phone: bdPhoneSchema,
+  address: z.string().trim().min(1, 'Delivery address is required.'),
+  district: z.string().trim().optional(),
+  note: z.string().trim().optional(),
+  shippingFee: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || (!Number.isNaN(Number(v)) && Number(v) >= 0), {
+      message: 'Shipping fee must not be negative.',
+    }),
+  discountTotal: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || (!Number.isNaN(Number(v)) && Number(v) >= 0), {
+      message: 'Discount must not be negative.',
+    }),
+  paymentMode: z.enum(['COD', 'FULL_PREPAID', 'ADVANCE_COD']),
+  advanceAmount: z.string().trim().optional(),
+  lines: z
+    .array(
+      z.object({
+        variantId: z.string().min(1, 'Select a variant.'),
+        quantity: z.number().int().min(1, 'Quantity must be at least 1.'),
+      }),
+    )
+    .min(1, 'Add at least one item.')
+    .max(50, 'Orders cannot exceed 50 lines.'),
+})

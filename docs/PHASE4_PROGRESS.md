@@ -46,7 +46,9 @@ Branch: `main` (`G:\Merqo`)
 - [x] **Slice H**: Phase 4 demo data (`DemoOrdersContributor` through real services, idempotent, ~20 orders across states & risk tiers, `DEMO_MODE=false` empty)
   - Built: `DemoOrdersContributor` (`order() == 50`, seeding `demo-webshop` API client, WH safety/opening stock, ONLINE promo, and 20 idempotent online/manual orders `demo-ord-01`..`demo-ord-20` across all states, flags, and `NEW`/`OK`/`WATCH`/`HIGH` customer risk tiers).
   - Tests: `DemoOrdersIntegrationTest`, `DemoDisabledIntegrationTest` — passing + Spotless clean; running full `scripts\run-tests.bat` baseline before Slice I (frontend).
-- [ ] **Slice I**: Frontend (Online Orders list & detail, Manual order form, Integration clients settings page, Demo Console page, Overview pending-orders card, Vitest tests, lint/typecheck/build)
+- [x] **Slice I**: Frontend (Online Orders list & detail, Manual order form, Integration clients settings page, Demo Console page, Overview pending-orders card, Vitest tests, lint/typecheck/build)
+  - Built: `src/api/orders.ts`, `OrderBadges.tsx`, `StatusPill.tsx` statuses, `posErrors.ts` (10 Phase 4 error codes), `validation.ts` (BD phone normalization & call/decline/cancel/manual schemas), `OrdersPage.tsx`, `OrderDetailPage.tsx`, `ManualOrderPage.tsx`, `WarehouseAvailabilityPage.tsx`, `IntegrationClientsPage.tsx`, `DemoConsolePage.tsx`, `App.tsx`, `AppShell.tsx`, `HomePage.tsx` (Overview `"Orders awaiting confirmation"` real count).
+  - Tests: `Phase4.test.tsx` (6 tests); full frontend `lint`, `typecheck`, `vitest run` (19 files, 90 tests), and `vite build` — all green.
 - [ ] **Slice J**: Local smoke script (`scripts/smoke-local.ps1` + live run), docs updates (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `DEPLOY.md`, `.env.example`, `TROUBLESHOOTING.md`, `SETUP.md`), full suite via `scripts\run-tests.bat`, Spotless, final commit/push/live-check
 
 ## Test Classes
@@ -56,4 +58,4 @@ Branch: `main` (`G:\Merqo`)
 - Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice I — Verify backend group suite green via `scripts\run-tests.bat`, then build frontend Phase 4 screens (`src/api/orders.ts`, Online Orders list/detail/call/confirm/decline/cancel, Manual Order form, Integration Keys settings tab/page, Demo Console page, Overview awaiting-confirmation count, error code map + Zod forms + Vitest tests + lint/typecheck/build).
+NEXT STEP: Slice J — Write and run `scripts/smoke-local.ps1` against locally started Spring Boot backend, update repository docs for Phase 4 (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `TROUBLESHOOTING.md`, `SETUP.md`), run `scripts\run-tests.bat` + Spotless, commit, push `main`, and run `scripts/check-live.ps1`.

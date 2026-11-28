@@ -110,7 +110,27 @@ export default function AppShell() {
     {
       id: 'dashboard',
       label: 'Dashboard',
-      items: [{ to: '/', label: 'Overview', end: true, visible: true }],
+      items: [
+        { to: '/', label: 'Overview', end: true, visible: true },
+        {
+          to: '/demo/console',
+          label: 'Demo console',
+          visible: demoMode && user?.accountType === 'OWNER',
+        },
+      ],
+    },
+    {
+      id: 'orders',
+      label: 'Orders',
+      items: [
+        { to: '/orders', label: 'Online orders', end: true, visible: can('ORDER_VIEW') },
+        { to: '/orders/manual', label: 'New manual order', visible: can('ORDER_CREATE_MANUAL') },
+        {
+          to: '/orders/availability',
+          label: 'Warehouse availability',
+          visible: can('ORDER_VIEW') && can('INVENTORY_VIEW'),
+        },
+      ],
     },
     {
       id: 'pos',
@@ -167,6 +187,11 @@ export default function AppShell() {
         { to: '/users', label: 'People', visible: can('USER_VIEW') },
         { to: '/permission-templates', label: 'Templates', visible: can('TEMPLATE_MANAGE') },
         { to: '/settings', label: 'Settings', visible: can('SETTINGS_VIEW') },
+        {
+          to: '/settings/integrations',
+          label: 'Integration keys',
+          visible: user?.accountType === 'OWNER',
+        },
         { to: '/audit', label: 'Audit', visible: can('AUDIT_VIEW') },
       ],
     },

@@ -21,6 +21,12 @@ import TransfersPage from './pages/TransfersPage'
 import TransferDetailPage from './pages/TransferDetailPage'
 import PosPage from './pages/PosPage'
 import SalesHistoryPage from './pages/SalesHistoryPage'
+import OrdersPage from './pages/OrdersPage'
+import OrderDetailPage from './pages/OrderDetailPage'
+import ManualOrderPage from './pages/ManualOrderPage'
+import WarehouseAvailabilityPage from './pages/WarehouseAvailabilityPage'
+import IntegrationClientsPage from './pages/IntegrationClientsPage'
+import DemoConsolePage from './pages/DemoConsolePage'
 import DevReceiptPreviewPage from './pages/DevReceiptPreviewPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RequireSession, { RequireSignedOut } from './session/RequireSession'
@@ -181,6 +187,54 @@ export default function App() {
           element={
             <RequireSession permission="SETTINGS_VIEW">
               <SettingsPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="settings/integrations"
+          element={
+            <RequireSession permission="SETTINGS_MANAGE">
+              <IntegrationClientsPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="orders"
+          element={
+            <RequireSession permission="ORDER_VIEW">
+              <OrdersPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="orders/manual"
+          element={
+            <RequireSession permission="ORDER_CREATE_MANUAL">
+              <ManualOrderPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="orders/availability"
+          element={
+            <RequireSession permission="ORDER_VIEW">
+              <WarehouseAvailabilityPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="orders/:id"
+          element={
+            <RequireSession permission="ORDER_VIEW">
+              <OrderDetailPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="demo/console"
+          element={
+            <RequireSession permission="SETTINGS_MANAGE">
+              <DemoConsolePage />
             </RequireSession>
           }
         />

@@ -2,6 +2,7 @@ import { useContext, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchLocations } from '../api/business'
+import { fetchOrderCounts } from '../api/orders'
 import { fetchCurrentCashSession, fetchSales } from '../api/pos'
 import HealthPanel from '../components/HealthPanel'
 import ServerWakingUp from '../components/ServerWakingUp'
@@ -31,6 +32,12 @@ const OVERVIEW_METRIC_CARDS = [
 ] as const
 
 const ACTION_CENTER_SLOTS = [
+  {
+    key: 'orders-pending',
+    label: 'Orders awaiting confirmation',
+    hint: 'Online & manual orders needing call confirmation',
+    to: '/orders?needsAction=true',
+  },
   {
     key: 'low-stock',
     label: 'Low-stock alerts',
@@ -94,6 +101,12 @@ export default function HomePage() {
     queryKey: ['pos', 'sales', 'overview-last', myBranch?.id],
     queryFn: () => fetchSales({ locationId: myBranch!.id, page: 0, size: 1 }),
     enabled: Boolean(isCashierView && myBranch?.id),
+  })
+
+  const orderCountsQuery = useQuery({
+    queryKey: ['orders', 'counts', 'overview'],
+    queryFn: fetchOrderCounts,
+    enabled: Boolean(user && can('ORDER_VIEW')),
   })
 
   const activeSession = branchSessionQuery.data?.session ?? null
@@ -258,7 +271,11 @@ export default function HomePage() {
                     </Link>
                     <p className="text-xs text-slate-500">{slot.hint}</p>
                   </div>
-                  <span className="text-xs font-medium text-slate-400 tabular-nums">—</span>
+                  <span className="text-xs font-medium text-slate-600 tabular-nums">
+                    {slot.key === 'orders-pending' && can('ORDER_VIEW')
+                      ? orderCountsQuery.data?.needsAction ?? '—'
+                      : '—'}
+                  </span>
                 </li>
               ))}
             </ul>

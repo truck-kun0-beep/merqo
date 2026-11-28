@@ -51,6 +51,9 @@ class PublicEndpointPolicyTest {
                     "/api/v1/integration",
                     "/api/v1/orders",
                     "/api/v1/customers",
+                    "/api/v1/payments",
+                    "/api/v1/refunds",
+                    "/api/v1/cod",
                     "/integration/v1");
 
     @Autowired

@@ -27,7 +27,7 @@ public class MerqoModeProperties {
 
     private boolean demoMode = false;
     private String courierMode = "mock";
-    private String paymentMode = "mock";
+    private String paymentMode = "manual";
     private String websiteMode = "mock";
     private String llmMode = "mock";
 

@@ -33,5 +33,6 @@ logging:
 
 merqo:
   demo-mode: true
+  payment-mode: ${PAYMENT_MODE:mock}
   integration:
     secret-key: ${INTEGRATION_SECRET_KEY:merqo-dev-test-integration-secret-key-32bytes!}

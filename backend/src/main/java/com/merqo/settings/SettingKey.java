@@ -54,7 +54,11 @@ public enum SettingKey {
 
     ORDERS_FOLLOW_UP_DEFAULT_MINUTES("orders.follow_up_default_minutes", ValueType.INTEGER, "120"),
     INTEGRATION_SIGNATURE_WINDOW_SECONDS(
-            "integration.signature_window_seconds", ValueType.INTEGER, "300");
+            "integration.signature_window_seconds", ValueType.INTEGER, "300"),
+    PAYMENTS_REQUIRE_SEPARATE_VERIFIER(
+            "payments.require_separate_verifier", ValueType.BOOLEAN, "false"),
+    PAYMENTS_VERIFICATION_OVERDUE_HOURS(
+            "payments.verification_overdue_hours", ValueType.INTEGER, "24");
 
     /** The paper widths a receipt printer may use, in millimetres. */
     public static final Set<Integer> ALLOWED_PAPER_WIDTHS = Set.of(58, 80);
@@ -165,6 +169,9 @@ public enum SettingKey {
             if (this == INTEGRATION_SIGNATURE_WINDOW_SECONDS && (parsed < 60 || parsed > 900)) {
                 throw new IllegalArgumentException(
                         getKey() + " must be between 60 and 900 seconds.");
+            }
+            if (this == PAYMENTS_VERIFICATION_OVERDUE_HOURS && (parsed < 1 || parsed > 336)) {
+                throw new IllegalArgumentException(getKey() + " must be between 1 and 336 hours.");
             }
             return parsed;
         } catch (NumberFormatException exception) {

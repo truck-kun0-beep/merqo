@@ -73,7 +73,7 @@ springdoc:
 merqo:
   demo-mode: ${DEMO_MODE:false}
   courier-mode: ${COURIER_MODE:mock}
-  payment-mode: ${PAYMENT_MODE:mock}
+  payment-mode: ${PAYMENT_MODE:manual}
   website-mode: ${WEBSITE_MODE:mock}
   llm-mode: ${LLM_MODE:mock}
   integration:

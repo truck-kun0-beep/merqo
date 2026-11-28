@@ -184,6 +184,39 @@ public final class ErrorCodes {
     /** API client exceeded the per-minute request rate limit. */
     public static final String RATE_LIMITED = "RATE_LIMITED";
 
+    /** A payment was attempted on a COD-only order that expects no advance payment. */
+    public static final String PAYMENT_NOT_EXPECTED = "PAYMENT_NOT_EXPECTED";
+
+    /** Non-rejected payments would exceed the expected advance or total payable amount. */
+    public static final String PAYMENT_EXCEEDS_TOTAL = "PAYMENT_EXCEEDS_TOTAL";
+
+    /** The payment already has an immutable verification decision. */
+    public static final String PAYMENT_ALREADY_DECIDED = "PAYMENT_ALREADY_DECIDED";
+
+    /** Confirmed verification amount does not match the recorded payment amount. */
+    public static final String AMOUNT_MISMATCH = "AMOUNT_MISMATCH";
+
+    /** Separate verifier policy prohibits verifying a payment recorded by the same actor. */
+    public static final String SELF_VERIFICATION_NOT_ALLOWED = "SELF_VERIFICATION_NOT_ALLOWED";
+
+    /** Automatic provider verification is unavailable in manual payment mode. */
+    public static final String VERIFIER_UNAVAILABLE = "VERIFIER_UNAVAILABLE";
+
+    /** Requested refund exceeds the remaining refundable verified paid amount. */
+    public static final String REFUND_EXCEEDS_PAID = "REFUND_EXCEEDS_PAID";
+
+    /** Non-owner requester cannot approve or reject their own refund request. */
+    public static final String SELF_APPROVAL_NOT_ALLOWED = "SELF_APPROVAL_NOT_ALLOWED";
+
+    /** COD collection attempted on an order with zero expected COD amount. */
+    public static final String COD_NOT_EXPECTED = "COD_NOT_EXPECTED";
+
+    /** COD collection or settlement line exceeds expected or unsettled courier balance. */
+    public static final String COD_EXCEEDS_EXPECTED = "COD_EXCEEDS_EXPECTED";
+
+    /** Settlement received amount differs from expected net without an explanatory note. */
+    public static final String SETTLEMENT_MISMATCH = "SETTLEMENT_MISMATCH";
+
     /** Something unexpected happened. */
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 

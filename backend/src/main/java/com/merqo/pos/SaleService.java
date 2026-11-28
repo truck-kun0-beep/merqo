@@ -58,6 +58,7 @@ import com.merqo.inventory.InventoryService;
 import com.merqo.inventory.domain.MovementType;
 import com.merqo.location.Location;
 import com.merqo.location.LocationRepository;
+import com.merqo.payments.domain.PaymentReferenceGuard;
 import com.merqo.pos.domain.JsonReceiptRenderer;
 import com.merqo.pos.domain.PaymentMethod;
 import com.merqo.pos.domain.PaymentRules;
@@ -108,6 +109,7 @@ public class SaleService {
     private final LocationRepository locationRepository;
     private final AppUserRepository userRepository;
     private final AuditService auditService;
+    private final PaymentReferenceGuard paymentReferenceGuard;
     private final Clock clock;
     private final TransactionTemplate requiresNewTemplate;
 
@@ -128,6 +130,7 @@ public class SaleService {
             LocationRepository locationRepository,
             AppUserRepository userRepository,
             AuditService auditService,
+            PaymentReferenceGuard paymentReferenceGuard,
             Clock clock,
             PlatformTransactionManager transactionManager) {
         this.saleRepository = saleRepository;
@@ -146,6 +149,7 @@ public class SaleService {
         this.locationRepository = locationRepository;
         this.userRepository = userRepository;
         this.auditService = auditService;
+        this.paymentReferenceGuard = paymentReferenceGuard;
         this.clock = clock;
         this.requiresNewTemplate = new TransactionTemplate(transactionManager);
         this.requiresNewTemplate.setPropagationBehavior(
@@ -411,6 +415,8 @@ public class SaleService {
         PaymentRules.ValidatedPayment validatedPayment =
                 PaymentRules.validate(
                         method, totals.total(), tendered, command.payment().reference());
+        paymentReferenceGuard.requireUniqueTrxId(
+                validatedPayment.method().name(), validatedPayment.normalizedReference());
 
         UUID saleId = UUID.randomUUID();
         long receiptSeq = saleRepository.nextReceiptNumberSeq();

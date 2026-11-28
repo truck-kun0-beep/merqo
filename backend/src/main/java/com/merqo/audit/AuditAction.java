@@ -263,5 +263,32 @@ public enum AuditAction {
     ORDER_CANCELLED,
 
     /** Staff recorded a customer cancellation request on an order. */
-    ORDER_CANCELLATION_REQUESTED
+    ORDER_CANCELLATION_REQUESTED,
+
+    /** An order payment record was created. */
+    PAYMENT_RECORDED,
+
+    /** An order payment was verified by staff or a provider check. */
+    PAYMENT_VERIFIED,
+
+    /** An order payment was rejected, releasing any TrxID reference. */
+    PAYMENT_REJECTED,
+
+    /** A refund request was created for an order. */
+    REFUND_REQUESTED,
+
+    /** A refund request was approved. */
+    REFUND_APPROVED,
+
+    /** A refund request was rejected. */
+    REFUND_REJECTED,
+
+    /** A refund payout was completed. */
+    REFUND_PAID,
+
+    /** A COD collection was recorded for a confirmed order. */
+    COD_COLLECTION_RECORDED,
+
+    /** A courier COD settlement batch was recorded. */
+    COD_SETTLEMENT_RECORDED
 }

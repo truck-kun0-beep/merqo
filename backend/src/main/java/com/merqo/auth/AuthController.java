@@ -29,6 +29,7 @@ import com.merqo.common.config.MerqoModeProperties;
 import com.merqo.common.config.MerqoSessionProperties;
 import com.merqo.common.error.NotFoundException;
 import com.merqo.common.web.CorrelationIdFilter;
+import com.merqo.payments.domain.PaymentVerifierRegistry;
 import com.merqo.pos.ApprovalService;
 import com.merqo.settings.SettingKey;
 import com.merqo.settings.SettingService;
@@ -65,6 +66,7 @@ public class AuthController {
     private final OwnerBootstrapService ownerBootstrapService;
     private final SessionSecurityContextRepository sessionRepository;
     private final ApprovalService approvalService;
+    private final PaymentVerifierRegistry paymentVerifierRegistry;
 
     /**
      * Creates the controller.
@@ -87,7 +89,8 @@ public class AuthController {
             MerqoSessionProperties sessionProperties,
             OwnerBootstrapService ownerBootstrapService,
             SessionSecurityContextRepository sessionRepository,
-            ApprovalService approvalService) {
+            ApprovalService approvalService,
+            PaymentVerifierRegistry paymentVerifierRegistry) {
         this.authService = authService;
         this.currentUserService = currentUserService;
         this.assignmentRepository = assignmentRepository;
@@ -97,6 +100,7 @@ public class AuthController {
         this.ownerBootstrapService = ownerBootstrapService;
         this.sessionRepository = sessionRepository;
         this.approvalService = approvalService;
+        this.paymentVerifierRegistry = paymentVerifierRegistry;
     }
 
     /**
@@ -113,6 +117,8 @@ public class AuthController {
         body.put("setupRequired", ownerBootstrapService.setupRequired());
         body.put("demoMode", modeProperties.isDemoMode());
         body.put("businessName", settingService.getString(SettingKey.BUSINESS_NAME));
+        body.put("paymentMode", paymentVerifierRegistry.getMode());
+        body.put("providerCheckEnabled", paymentVerifierRegistry.isProviderCheckEnabled());
         return body;
     }
 

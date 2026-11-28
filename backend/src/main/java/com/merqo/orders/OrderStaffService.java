@@ -71,6 +71,8 @@ import com.merqo.orders.domain.OrderStatus;
 import com.merqo.orders.domain.OrderTransitions;
 import com.merqo.orders.domain.PhoneNumber;
 import com.merqo.orders.domain.PhoneRiskPolicy.RiskTier;
+import com.merqo.payments.OrderPaymentPositionService;
+import com.merqo.payments.PaymentDtos.OrderPaymentPositionView;
 import com.merqo.settings.SettingKey;
 import com.merqo.settings.SettingService;
 import com.merqo.user.AppUser;
@@ -98,6 +100,7 @@ public class OrderStaffService {
     private final AppUserRepository userRepository;
     private final SettingService settingService;
     private final AuditService auditService;
+    private final OrderPaymentPositionService paymentPositionService;
     private final Clock clock;
 
     public OrderStaffService(
@@ -116,6 +119,7 @@ public class OrderStaffService {
             AppUserRepository userRepository,
             SettingService settingService,
             AuditService auditService,
+            OrderPaymentPositionService paymentPositionService,
             Clock clock) {
         this.orderRepository = orderRepository;
         this.orderLineRepository = orderLineRepository;
@@ -132,6 +136,7 @@ public class OrderStaffService {
         this.userRepository = userRepository;
         this.settingService = settingService;
         this.auditService = auditService;
+        this.paymentPositionService = paymentPositionService;
         this.clock = clock;
     }
 
@@ -846,6 +851,9 @@ public class OrderStaffService {
                         risk.riskTier() == RiskTier.HIGH,
                         order.getCancellationRequestedAt() != null);
 
+        OrderPaymentPositionView paymentPosition =
+                paymentPositionService.computePositionView(order);
+
         return new OrderDetailView(
                 order.getId(),
                 order.getOrderNumber(),
@@ -881,7 +889,9 @@ public class OrderStaffService {
                 order.getClosedAt(),
                 lines,
                 callLogs,
-                history);
+                history,
+                paymentPosition,
+                paymentPosition.readyForShipment());
     }
 
     private StockSnapshotView snapshotFor(UUID warehouseId, UUID variantId) {

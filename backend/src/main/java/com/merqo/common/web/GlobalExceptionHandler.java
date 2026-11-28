@@ -24,6 +24,7 @@ import com.merqo.common.error.ErrorCodes;
 import com.merqo.common.error.ProblemDetail;
 import com.merqo.common.error.PromotionConflictException;
 import com.merqo.orders.domain.OrderRuleException;
+import com.merqo.payments.domain.PaymentRuleException;
 import com.merqo.pos.domain.PosRuleException;
 
 /**
@@ -135,6 +136,34 @@ public class GlobalExceptionHandler {
                 "Order rule rejected the request: code={} message={}",
                 exception.getErrorCode(),
                 exception.getMessage());
+        HttpStatus status = HttpStatus.valueOf(exception.getHttpStatus());
+        return ResponseEntity.status(status)
+                .body(
+                        ProblemDetail.of(
+                                PROBLEM_TYPE_BASE
+                                        + exception
+                                                .getErrorCode()
+                                                .toLowerCase(java.util.Locale.ROOT),
+                                status.getReasonPhrase(),
+                                status.value(),
+                                exception.getMessage(),
+                                request.getRequestURI(),
+                                exception.getErrorCode(),
+                                currentCorrelationId(),
+                                Instant.now(clock)));
+    }
+
+    /**
+     * Handles pure Java payment, refund, and COD domain rule rejections.
+     *
+     * @param exception the raised payment domain rule exception
+     * @param request the current request
+     * @return the RFC 7807 problem detail response
+     */
+    @ExceptionHandler(PaymentRuleException.class)
+    public ResponseEntity<ProblemDetail> handlePaymentRuleException(
+            PaymentRuleException exception, HttpServletRequest request) {
+        log.info("Payment rule rejected the request: code={}", exception.getErrorCode());
         HttpStatus status = HttpStatus.valueOf(exception.getHttpStatus());
         return ResponseEntity.status(status)
                 .body(

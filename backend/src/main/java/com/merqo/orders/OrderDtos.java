@@ -12,6 +12,7 @@ import com.merqo.orders.domain.PaymentTerms.ClaimedAdvanceMethod;
 import com.merqo.orders.domain.PaymentTerms.PaymentMode;
 import com.merqo.orders.domain.PhoneHistory;
 import com.merqo.orders.domain.PhoneRiskPolicy.RiskTier;
+import com.merqo.payments.PaymentDtos.OrderPaymentPositionView;
 
 /** Response DTOs for the staff Order Handling, Customer History, and Availability APIs. */
 public final class OrderDtos {
@@ -125,7 +126,9 @@ public final class OrderDtos {
             Instant closedAt,
             List<OrderLineView> lines,
             List<OrderCallLogView> callLogs,
-            List<OrderStatusHistoryView> statusHistory) {}
+            List<OrderStatusHistoryView> statusHistory,
+            OrderPaymentPositionView paymentPosition,
+            boolean readyForShipment) {}
 
     public record OrderCancelResponse(
             OrderDetailView order,

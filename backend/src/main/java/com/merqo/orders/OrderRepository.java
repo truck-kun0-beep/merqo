@@ -7,12 +7,14 @@ import java.util.UUID;
 import jakarta.persistence.LockModeType;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /** JPA repository for {@link Order}. */
-public interface OrderRepository extends JpaRepository<Order, UUID> {
+public interface OrderRepository
+        extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
 
     @Query(value = "SELECT nextval('order_number_sequence')", nativeQuery = true)
     long nextOrderSequence();

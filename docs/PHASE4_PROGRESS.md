@@ -31,7 +31,9 @@ Branch: `main` (`G:\Merqo`)
 - [x] **Slice C**: Order intake pipeline (`integration_inbox`, `GenericApiOrderSource`, order/line creation, idempotency, price mismatch, unknown SKU failure & retry, invalid phone, stock availability & order status endpoints + concurrency tests)
   - Built: `OrderNumber`, `Customer`, `CustomerRepository`, `CustomerService`, `Order`, `OrderRepository`, `OrderLine`, `OrderLineRepository`, `OrderStatusHistory`, `OrderStatusHistoryRepository`, `OrderCallLog`, `OrderCallLogRepository`, `IntegrationInbox`, `IntegrationInboxRepository`, `GenericApiOrderSource`, `WebsiteOrderSourceResolver`, `OrderSoftHoldReader`, `OnlinePricingService`, `OrderIntakeService`, `IntegrationOrderController`.
   - Tests: `OrderIntakeIntegrationTest` (5 tests incl. `ExecutorService` + `CountDownLatch` concurrent duplicate intake, `FAILED` inbox retry, `IDEMPOTENCY_CONFLICT`, price mismatch, invalid phone, `ONLINE_LOCATION_NOT_SET`, soft holds on `GET /integration/v1/stock`) + `PublicEndpointPolicyTest` (5 tests) — 10/10 passing + Spotless clean.
-- [ ] **Slice D**: Staff order handling (list, detail, call log, customer edit, confirm hard reserve, decline, cancel release, cancellation request, availability view + concurrency & trigger tests)
+- [x] **Slice D**: Staff order handling (list, detail, call log, customer edit, confirm hard reserve, decline, cancel release, cancellation request, availability view + concurrency & trigger tests)
+  - Built: `PhoneRiskService`, `OrderDtos`, `OrderStaffService`, `OrderController`, `OrderRepository` (`JpaSpecificationExecutor`).
+  - Tests: `OrderStaffIntegrationTest` (2 tests covering Dhaka date boundaries, call logs + `CALL_NOTE_REQUIRED` + auto `FOLLOW_UP`, customer phone edit, atomic multi-line reservation + rollback on shortage, concurrent confirm race on last unit, cancel release + claimed advance notice, decline reasons, cancellation request, PostgreSQL append-only triggers on `order_status_history` & `order_call_logs`, and `reserved <= on_hand` balance invariants) — 2/2 passing + Spotless clean.
 - [ ] **Slice E**: Manual orders & customer history (`POST /orders/manual`, history counts, risk badge, `GET /customers/history` + tier/threshold tests)
 - [ ] **Slice F**: Scope, privacy & hardening tests (warehouse isolation, 404/403, tampered IDs, Jackson cost-key checks, audit rows, default-deny enumeration)
 - [ ] **Slice G**: Website simulator (`tools/website-simulator/send-order.mjs` & `.ps1`), Demo Console endpoints, and `docs/INTEGRATION_API.md`
@@ -46,4 +48,4 @@ Branch: `main` (`G:\Merqo`)
 - Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice D — Build `OrderStaffService` & `OrderController` (`/api/v1/orders*`, `/orders/{id}/calls`, `/customer`, `/confirm`, `/decline`, `/cancel`, `/cancellation-request`, `/orders/availability`) with Dhaka date filtering, derived phone risk badge, transactional `InventoryService.reserve`/`release`, and concurrency + append-only trigger integration tests.
+NEXT STEP: Slice E — Implement manual order creation (`POST /api/v1/orders/manual` with server catalog + ONLINE promo pricing) and customer history endpoint (`GET /api/v1/customers/history?phone=`) plus risk badge threshold integration tests.

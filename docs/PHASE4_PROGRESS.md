@@ -43,7 +43,9 @@ Branch: `main` (`G:\Merqo`)
 - [x] **Slice G**: Website simulator (`tools/website-simulator/send-order.mjs` & `.ps1`), Demo Console endpoints, and `docs/INTEGRATION_API.md`
   - Built: `MockWebsiteOrderSource`, `DemoSimulatorController` (`GET /api/v1/demo/simulator-info`, `POST /api/v1/demo/simulate-order`, owner + `DEMO_MODE=true` only), `tools/website-simulator/send-order.mjs` & `send-order.ps1`, complete rewrite of `docs/INTEGRATION_API.md`.
   - Tests: `DemoSimulatorIntegrationTest` (1 test), `PublicEndpointPolicyTest` (5 tests), `node --check send-order.mjs` — passing + Spotless clean.
-- [ ] **Slice H**: Phase 4 demo data (`DemoOrdersContributor` through real services, idempotent, ~20 orders across states & risk tiers, `DEMO_MODE=false` empty)
+- [x] **Slice H**: Phase 4 demo data (`DemoOrdersContributor` through real services, idempotent, ~20 orders across states & risk tiers, `DEMO_MODE=false` empty)
+  - Built: `DemoOrdersContributor` (`order() == 50`, seeding `demo-webshop` API client, WH safety/opening stock, ONLINE promo, and 20 idempotent online/manual orders `demo-ord-01`..`demo-ord-20` across all states, flags, and `NEW`/`OK`/`WATCH`/`HIGH` customer risk tiers).
+  - Tests: `DemoOrdersIntegrationTest`, `DemoDisabledIntegrationTest` — passing + Spotless clean; running full `scripts\run-tests.bat` baseline before Slice I (frontend).
 - [ ] **Slice I**: Frontend (Online Orders list & detail, Manual order form, Integration clients settings page, Demo Console page, Overview pending-orders card, Vitest tests, lint/typecheck/build)
 - [ ] **Slice J**: Local smoke script (`scripts/smoke-local.ps1` + live run), docs updates (`JAVA_GUIDE.md`, `ARCHITECTURE.md`, `ASSUMPTIONS.md`, `PERMISSIONS.md`, `DEPLOY.md`, `.env.example`, `TROUBLESHOOTING.md`, `SETUP.md`), full suite via `scripts\run-tests.bat`, Spotless, final commit/push/live-check
 
@@ -54,4 +56,4 @@ Branch: `main` (`G:\Merqo`)
 - Live Render URL `https://merqo-api.onrender.com` returned 404/502 in `check-live.ps1`.
 - Local `.env` and `pg_dump.exe` not present for `scripts\backup-db.bat`.
 
-NEXT STEP: Slice H — Create `DemoOrdersContributor` (idempotent by `demo_key`, order after `DemoPosContributor`, seeding demo webshop client and ~20 orders across statuses/channels/risk tiers + `DEMO_MODE=false` empty test), then run full suite via `scripts\run-tests.bat`.
+NEXT STEP: Slice I — Verify backend group suite green via `scripts\run-tests.bat`, then build frontend Phase 4 screens (`src/api/orders.ts`, Online Orders list/detail/call/confirm/decline/cancel, Manual Order form, Integration Keys settings tab/page, Demo Console page, Overview awaiting-confirmation count, error code map + Zod forms + Vitest tests + lint/typecheck/build).

@@ -348,6 +348,10 @@ public class Order {
         return demoKey;
     }
 
+    public void setDemoKey(String demoKey) {
+        this.demoKey = demoKey;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
